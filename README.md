@@ -1,46 +1,159 @@
-# Getting Started with Create React App
+# Freshservice Dashboard
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A sleek, modern dashboard for visualizing and monitoring your Freshservice ITSM data. This dashboard provides real-time insights into your service desk operations, including ticket trends, agent performance, and more.
 
-## Available Scripts
+## Features
 
-In the project directory, you can run:
+- **Real-time metrics**: View current ticket stats and trends
+- **Agent performance tracking**: Monitor response times and workloads
+- **Interactive charts**: Visualize data with beautiful, responsive charts
+- **Mobile-friendly**: Responsive design works on all devices
+- **Mock data mode**: Development mode with mock data for testing
 
-### `npm start`
+## Getting Started
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+### Prerequisites
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+- Node.js (v14 or higher)
+- npm or yarn
+- Freshservice account with API access
 
-### `npm test`
+### Installation
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+1. Clone the repository:
+   ```
+   git clone https://github.com/yourusername/freshservice-dashboard.git
+   cd freshservice-dashboard
+   ```
 
-### `npm run build`
+2. Install dependencies:
+   ```
+   npm install
+   ```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+3. **Configure your Freshservice API settings:**
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+   Create a `.env.local` file in the root directory with your Freshservice API credentials:
+   ```
+   REACT_APP_FRESHSERVICE_DOMAIN=your-domain.freshservice.com
+   REACT_APP_FRESHSERVICE_API_KEY=your-api-key-here
+   ```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+   **Finding your API Key:**
+   - Login to your Freshservice Portal
+   - Click on your profile picture (top right corner)
+   - Go to "Profile settings"
+   - Your API key will be available below the "Delegate Approvals" section
 
-### `npm run eject`
+   **Example configuration:**
+   ```
+   REACT_APP_FRESHSERVICE_DOMAIN=acme.freshservice.com
+   REACT_APP_FRESHSERVICE_API_KEY=9CRirBinRIRpTonm2X
+   ```
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+4. Start the development server:
+   ```
+   npm start
+   ```
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+5. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+## API Integration
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+This dashboard uses the Freshservice API v1/v2 to fetch real-time data. The API integration:
 
-## Learn More
+- **Authentication**: Uses Basic Auth with API Key format `APIKey:X`
+- **Proxy Setup**: Development proxy handles CORS issues
+- **Endpoints**: Supports both v1 (`/helpdesk`, `/itil`) and v2 (`/api/v2`) endpoints
+- **Error Handling**: Graceful fallbacks and detailed logging
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+### API Configuration
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+The API configuration is managed in `src/config.ts`:
+- Domain and API key from environment variables
+- Automatic base URL generation
+- Debug logging enabled for development
+
+### Troubleshooting API Issues
+
+**Common Issues:**
+
+1. **401 Unauthorized**: Check your API key
+2. **403 Forbidden**: API key lacks permissions
+3. **404 Not Found**: Verify domain name is correct
+4. **429 Rate Limited**: Wait before retrying (1000 calls/hour limit)
+
+**Debug Mode:**
+The dashboard includes detailed API logging. Check the browser console for:
+- Request/response details
+- Authentication headers
+- Error messages with solutions
+
+## Project Structure
+
+```
+freshservice-dashboard/
+├── public/                  # Static files
+├── src/                     # Source code
+│   ├── components/          # React components
+│   │   ├── Common/          # Shared components
+│   │   ├── Dashboard/       # Dashboard components
+│   │   ├── Tickets/         # Ticket-related components
+│   │   └── Assets/          # Asset-related components
+│   ├── services/            # API services
+│   │   ├── freshserviceApi.ts  # Main API integration
+│   │   └── api.ts           # Data processing utilities
+│   ├── types/               # TypeScript type definitions
+│   ├── contexts/            # React contexts (API state)
+│   ├── utils/               # Utility functions
+│   ├── config.ts            # Application configuration
+│   ├── setupProxy.js        # Development proxy setup
+│   ├── App.tsx              # Main App component
+│   └── index.tsx            # Entry point
+└── package.json             # Dependencies and scripts
+```
+
+## Development
+
+### Mock Data Mode
+
+If you can't connect to the Freshservice API, the dashboard will automatically fall back to mock data. This is useful for:
+- Development without API access
+- Testing UI components
+- Demonstrating the dashboard
+
+To force mock data mode, set `enableMockData: true` in `src/config.ts`.
+
+### API Testing
+
+The dashboard includes API connection testing:
+- Automatic connection check on startup
+- Manual retry functionality
+- Multiple endpoint fallbacks
+- Detailed error reporting
+
+## Supported Freshservice Features
+
+- ✅ Tickets (list, view, stats)
+- ✅ Agents (list, view)
+- ✅ Dashboard metrics
+- ⏳ Assets (planned)
+- ⏳ Service Catalog (planned)
+- ⏳ Changes (planned)
+
+## Future Enhancements
+
+- [ ] Add user authentication
+- [ ] Implement ticket management features
+- [ ] Add asset management dashboard
+- [ ] Create custom report builder
+- [ ] Add Slack/Teams integration
+- [ ] Implement real-time notifications
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
