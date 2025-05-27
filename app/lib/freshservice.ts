@@ -1,5 +1,6 @@
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { serverConfig } from './config';
+import { apiCache, rateLimitTracker } from './cache';
 
 // Types from the existing project
 export interface Ticket {
@@ -21,6 +22,7 @@ export interface Ticket {
   fr_due_by?: string;
   group_id?: number;
   department_id?: number;
+  workspace_id?: number;
   custom_fields?: Record<string, any>;
   tags?: string[];
   stats?: {
@@ -53,6 +55,23 @@ export interface Agent {
   };
 }
 
+export interface Group {
+  id: number;
+  name: string;
+  description?: string;
+  agent_ids?: number[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Workspace {
+  id: number;
+  name: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface TicketResponse {
   tickets: Ticket[];
   meta?: {
@@ -69,54 +88,59 @@ export interface AgentResponse {
   agents: Agent[];
 }
 
+export interface GroupResponse {
+  groups: Group[];
+}
+
+export interface WorkspaceResponse {
+  workspaces: Workspace[];
+}
+
 /**
- * Server-side Freshservice API client
- * This runs only on the server and keeps API keys secure
+ * Freshservice API Client with caching and rate limiting
+ * Respects PRO plan limits: 400 calls/min overall, 120 calls/min for tickets
  */
-class FreshserviceApiClient {
-  private client: AxiosInstance;
+export class FreshserviceApiClient {
+  private axiosInstance: AxiosInstance;
 
   constructor() {
-    const authHeader = `Basic ${Buffer.from(`${serverConfig.freshservice.apiKey}:X`).toString('base64')}`;
-
-    this.client = axios.create({
+    this.axiosInstance = axios.create({
       baseURL: serverConfig.freshservice.baseUrl,
       timeout: serverConfig.freshservice.timeout,
       headers: {
-        'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${Buffer.from(`${serverConfig.freshservice.apiKey}:X`).toString('base64')}`,
       },
     });
 
-    // Add request interceptor for debugging
-    if (serverConfig.features.debug) {
-      this.client.interceptors.request.use(
-        (config) => {
-          console.log(`🔄 API REQUEST: ${config.method?.toUpperCase()} ${config.url}`);
-          console.log(`📤 Headers:`, config.headers);
-          return config;
-        },
-        (error) => {
-          console.error('❌ Request Error:', error);
-          return Promise.reject(error);
-        }
-      );
-    }
+    // Request interceptor for logging and rate limiting
+    this.axiosInstance.interceptors.request.use((config) => {
+      const endpoint = config.url?.includes('/tickets') ? 'tickets' : 
+                     config.url?.includes('/agents') ? 'agents' : 'other';
+      
+      console.log(`🔄 API REQUEST: ${config.method?.toUpperCase()} ${config.url}`);
+      console.log('📤 Headers:', config.headers);
+      
+      // Record the request for rate limiting
+      rateLimitTracker.recordRequest(endpoint);
+      
+      return config;
+    });
 
-    // Add response interceptor for debugging and error handling
-    this.client.interceptors.response.use(
+    // Response interceptor for logging
+    this.axiosInstance.interceptors.response.use(
       (response) => {
-        if (serverConfig.features.debug) {
-          console.log(`✅ API RESPONSE: ${response.status} ${response.config.method?.toUpperCase()} ${response.config.url}`);
-          console.log(`📊 Response Status:`, response.status, response.statusText);
-          
-          if (response.data?.tickets) {
-            console.log(`🎫 Tickets Count: ${response.data.tickets.length}`);
-          } else if (response.data?.agents) {
-            console.log(`👥 Agents Count: ${response.data.agents.length}`);
-          }
+        console.log(`✅ API RESPONSE: ${response.status} ${response.config.method?.toUpperCase()} ${response.config.url}`);
+        console.log('📊 Response Status:', response.status, response.statusText);
+        
+        // Log specific data counts for tickets and agents
+        if (response.config.url?.includes('/tickets')) {
+          console.log('🎫 Tickets Count:', response.data.tickets?.length || 0);
+        } else if (response.config.url?.includes('/agents')) {
+          console.log('👥 Agents Count:', response.data.agents?.length || 0);
         }
+        
         return response;
       },
       (error) => {
@@ -126,84 +150,16 @@ class FreshserviceApiClient {
           url: error.config?.url,
           method: error.config?.method,
         });
-
-        if (error.response?.data) {
-          console.error('💥 Error Response Body:', error.response.data);
+        
+        // Handle rate limiting
+        if (error.response?.status === 429) {
+          const retryAfter = error.response.headers['retry-after'];
+          console.warn(`🚫 Rate limited! Retry after: ${retryAfter} seconds`);
         }
-
-        return Promise.reject(error);
+        
+        throw error;
       }
     );
-  }
-
-  /**
-   * Get tickets with pagination
-   */
-  async getTickets(page = 1, per_page = 30): Promise<TicketResponse> {
-    try {
-      const response = await this.client.get('/tickets', {
-        params: { page, per_page },
-      });
-
-      // Handle different response formats
-      if (response.data && response.data.tickets) {
-        return response.data;
-      } else if (Array.isArray(response.data)) {
-        return {
-          tickets: response.data.map(this.transformTicket),
-          meta: {
-            total_pages: Math.ceil(100 / per_page),
-            current_page: page,
-            total_entries: response.data.length,
-            per_page: per_page,
-          }
-        };
-      }
-
-      return { tickets: [] };
-    } catch (error) {
-      console.error('Error fetching tickets:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get agents with pagination
-   */
-  async getAgents(page = 1, per_page = 30): Promise<AgentResponse> {
-    try {
-      let response;
-      
-      // Try agents endpoint first, fallback to requesters
-      try {
-        response = await this.client.get('/agents', {
-          params: { page, per_page },
-        });
-      } catch (error: any) {
-        if (error.response?.status === 404) {
-          response = await this.client.get('/requesters', {
-            params: { page, per_page },
-          });
-        } else {
-          throw error;
-        }
-      }
-
-      // Handle different response formats
-      let agents = [];
-      if (response.data && response.data.agents) {
-        agents = response.data.agents.map(this.transformAgent);
-      } else if (response.data && response.data.requesters) {
-        agents = response.data.requesters.map(this.transformAgent);
-      } else if (Array.isArray(response.data)) {
-        agents = response.data.map(this.transformAgent);
-      }
-
-      return { agents };
-    } catch (error) {
-      console.error('Error fetching agents:', error);
-      throw error;
-    }
   }
 
   /**
@@ -215,7 +171,7 @@ class FreshserviceApiClient {
       console.log(`   Domain: ${serverConfig.freshservice.domain}`);
       console.log(`   Base URL: ${serverConfig.freshservice.baseUrl}`);
 
-      const response = await this.client.get('/tickets', {
+      const response = await this.axiosInstance.get('/tickets', {
         params: { page: 1, per_page: 1 }
       });
 
@@ -230,63 +186,174 @@ class FreshserviceApiClient {
   }
 
   /**
-   * Transform ticket data to ensure consistency
+   * Get tickets with caching and rate limiting
+   * PRO Plan: 120 calls per minute for tickets
    */
-  private transformTicket(ticket: any): Ticket {
-    return {
-      id: ticket.id || ticket.display_id,
-      subject: ticket.subject || '',
-      description: ticket.description || ticket.description_html || '',
-      status: ticket.status || 2,
-      priority: ticket.priority || 1,
-      requester_id: ticket.requester_id || 0,
-      responder_id: ticket.responder_id || ticket.owner_id,
-      created_at: ticket.created_at || new Date().toISOString(),
-      updated_at: ticket.updated_at || new Date().toISOString(),
-      source: ticket.source || 2,
-      impact: ticket.impact || 1,
-      category: ticket.category,
-      sub_category: ticket.sub_category,
-      item_category: ticket.item_category,
-      due_by: ticket.due_by || ticket.fr_due_by || new Date().toISOString(),
-      fr_due_by: ticket.fr_due_by,
-      group_id: ticket.group_id,
-      department_id: ticket.department_id,
-      custom_fields: ticket.custom_fields || ticket.custom_field || {},
-      tags: ticket.tags || [],
-      stats: {
-        response_time: ticket.stats?.response_time,
-        resolution_time: ticket.stats?.resolution_time,
-      }
-    };
+  async getTickets(page: number = 1, perPage: number = 100): Promise<TicketResponse> {
+    const cacheKey = apiCache.getTicketsCacheKey(page, perPage);
+    
+    // Check cache first
+    const cachedData = apiCache.get<TicketResponse>(cacheKey);
+    if (cachedData) {
+      console.log(`📦 Cache HIT: tickets page ${page} (${cachedData.tickets?.length || 0} tickets)`);
+      return cachedData;
+    }
+    
+    // Check rate limits before making request
+    if (!rateLimitTracker.canMakeRequest('tickets')) {
+      const waitTime = rateLimitTracker.getWaitTime();
+      const waitSeconds = Math.ceil(waitTime / 1000);
+      throw new Error(`Rate limit exceeded. Please wait ${waitSeconds} seconds before making more requests.`);
+    }
+    
+    console.log(`🌐 Cache MISS: fetching tickets page ${page}...`);
+    
+    try {
+      const response: AxiosResponse<TicketResponse> = await this.axiosInstance.get('/tickets', {
+        params: { page, per_page: perPage }
+      });
+      
+      // Cache the response
+      apiCache.setTickets(cacheKey, response.data);
+      console.log(`💾 Cached tickets page ${page}`);
+      
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching tickets page ${page}:`, error);
+      throw error;
+    }
   }
 
   /**
-   * Transform agent data to ensure consistency
+   * Get agents with caching and rate limiting
+   * PRO Plan: 120 calls per minute for agents
    */
-  private transformAgent(agent: any): Agent {
+  async getAgents(page: number = 1, perPage: number = 100): Promise<AgentResponse> {
+    const cacheKey = apiCache.getAgentsCacheKey(page, perPage);
+    
+    // Check cache first
+    const cachedData = apiCache.get<AgentResponse>(cacheKey);
+    if (cachedData) {
+      console.log(`📦 Cache HIT: agents page ${page} (${cachedData.agents?.length || 0} agents)`);
+      return cachedData;
+    }
+    
+    // Check rate limits
+    if (!rateLimitTracker.canMakeRequest('agents')) {
+      const waitTime = rateLimitTracker.getWaitTime();
+      const waitSeconds = Math.ceil(waitTime / 1000);
+      throw new Error(`Rate limit exceeded. Please wait ${waitSeconds} seconds before making more requests.`);
+    }
+    
+    console.log(`🌐 Cache MISS: fetching agents page ${page}...`);
+    
+    try {
+      const response: AxiosResponse<AgentResponse> = await this.axiosInstance.get('/agents', {
+        params: { page, per_page: perPage }
+      });
+      
+      // Cache the response
+      apiCache.set(cacheKey, response.data);
+      console.log(`💾 Cached agents page ${page}`);
+      
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching agents page ${page}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get groups with caching and rate limiting
+   */
+  async getGroups(page: number = 1, perPage: number = 100): Promise<GroupResponse> {
+    const cacheKey = `groups_${page}_${perPage}`;
+    
+    // Check cache first
+    const cachedData = apiCache.get<GroupResponse>(cacheKey);
+    if (cachedData) {
+      console.log(`📦 Cache HIT: groups page ${page} (${cachedData.groups?.length || 0} groups)`);
+      return cachedData;
+    }
+    
+    // Check rate limits
+    if (!rateLimitTracker.canMakeRequest('other')) {
+      const waitTime = rateLimitTracker.getWaitTime();
+      const waitSeconds = Math.ceil(waitTime / 1000);
+      throw new Error(`Rate limit exceeded. Please wait ${waitSeconds} seconds before making more requests.`);
+    }
+    
+    console.log(`🌐 Cache MISS: fetching groups page ${page}...`);
+    
+    try {
+      const response: AxiosResponse<GroupResponse> = await this.axiosInstance.get('/groups', {
+        params: { page, per_page: perPage }
+      });
+      
+      // Cache the response
+      apiCache.set(cacheKey, response.data);
+      console.log(`💾 Cached groups page ${page}`);
+      
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching groups page ${page}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get workspaces with caching and rate limiting
+   */
+  async getWorkspaces(page: number = 1, perPage: number = 100): Promise<WorkspaceResponse> {
+    const cacheKey = `workspaces_${page}_${perPage}`;
+    
+    // Check cache first
+    const cachedData = apiCache.get<WorkspaceResponse>(cacheKey);
+    if (cachedData) {
+      console.log(`📦 Cache HIT: workspaces page ${page} (${cachedData.workspaces?.length || 0} workspaces)`);
+      return cachedData;
+    }
+    
+    // Check rate limits
+    if (!rateLimitTracker.canMakeRequest('other')) {
+      const waitTime = rateLimitTracker.getWaitTime();
+      const waitSeconds = Math.ceil(waitTime / 1000);
+      throw new Error(`Rate limit exceeded. Please wait ${waitSeconds} seconds before making more requests.`);
+    }
+    
+    console.log(`🌐 Cache MISS: fetching workspaces page ${page}...`);
+    
+    try {
+      const response: AxiosResponse<WorkspaceResponse> = await this.axiosInstance.get('/workspaces', {
+        params: { page, per_page: perPage }
+      });
+      
+      // Cache the response
+      apiCache.set(cacheKey, response.data);
+      console.log(`💾 Cached workspaces page ${page}`);
+      
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching workspaces page ${page}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Clear cache (useful for testing or when fresh data is needed)
+   */
+  clearCache(): void {
+    apiCache.clear();
+    console.log('🧹 API cache cleared');
+  }
+
+  /**
+   * Get cache and rate limiting stats
+   */
+  getStats(): { cache: any; rateLimit: any } {
     return {
-      id: agent.id,
-      name: agent.name || `${agent.first_name || ''} ${agent.last_name || ''}`.trim(),
-      first_name: agent.first_name,
-      last_name: agent.last_name,
-      email: agent.email || agent.primary_email || '',
-      role: agent.role,
-      department: agent.department,
-      active: agent.active !== false,
-      occasional: agent.occasional || false,
-      job_title: agent.job_title,
-      phone: agent.phone || agent.work_phone_number,
-      mobile_phone_number: agent.mobile_phone_number,
-      department_ids: agent.department_ids || [],
-      group_ids: agent.group_ids || [],
-      role_ids: agent.role_ids || [],
-      created_at: agent.created_at || new Date().toISOString(),
-      updated_at: agent.updated_at || new Date().toISOString(),
-      stats: {
-        tickets_resolved: agent.stats?.tickets_resolved,
-        avg_response_time: agent.stats?.avg_response_time,
-      }
+      cache: apiCache.getStats(),
+      rateLimit: rateLimitTracker.getStats()
     };
   }
 }

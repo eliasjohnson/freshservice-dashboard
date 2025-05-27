@@ -65,6 +65,10 @@ const TICKET_PRIORITY: Record<number, string> = {
 function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
   let filtered = [...tickets];
 
+  // FIRST: Filter by IT Support workspace only (workspace_id: 2)
+  filtered = filtered.filter(ticket => ticket.workspace_id === 2);
+  console.log(`🏢 Filtered to ${filtered.length} tickets from IT Support workspace`);
+
   // Filter by agent
   if (filters.agentId && filters.agentId !== 'all') {
     filtered = filtered.filter(ticket => ticket.responder_id === filters.agentId);
@@ -213,7 +217,41 @@ function createResolutionTimesData(tickets: Ticket[]): Array<{ name: string; val
 }
 
 /**
- * Create enhanced agent performance data with workload analysis
+ * Filter agents to only include IT team members
+ * Now based on agents who actually handle tickets in the IT Support workspace
+ */
+function filterITAgents(agents: Agent[], tickets: Ticket[]): Agent[] {
+  // Get all responder IDs from IT Support workspace tickets
+  const itTickets = tickets.filter(ticket => ticket.workspace_id === 2);
+  const itResponderIds = new Set(
+    itTickets
+      .map(ticket => ticket.responder_id)
+      .filter(id => id !== null && id !== undefined) as number[]
+  );
+
+  console.log(`🎯 Found ${itResponderIds.size} unique responders in IT Support workspace`);
+
+  // Filter agents to only those who handle IT Support tickets
+  const itAgents = agents.filter(agent => {
+    // Check if agent is active first
+    if (!agent.active) return false;
+    
+    // Check if agent handles tickets in IT Support workspace
+    const isITResponder = itResponderIds.has(agent.id);
+    
+    if (isITResponder) {
+      console.log(`   ✅ IT Agent: ${agent.first_name} ${agent.last_name} - ${agent.job_title || 'No title'}`);
+    }
+    
+    return isITResponder;
+  });
+  
+  console.log(`🎯 Filtered to ${itAgents.length} IT team members from ${agents.length} total agents (based on IT workspace ticket handling)`);
+  return itAgents;
+}
+
+/**
+ * Create enhanced agent performance data with workload analysis - IT TEAM ONLY
  */
 function createAgentPerformanceData(tickets: Ticket[], agents: Agent[]): Array<{ 
   id: number;
@@ -223,6 +261,9 @@ function createAgentPerformanceData(tickets: Ticket[], agents: Agent[]): Array<{
   avgResponseTime: string;
   workload: 'Light' | 'Moderate' | 'Heavy' | 'Overloaded';
 }> {
+  // FILTER TO ONLY IT TEAM MEMBERS
+  const itAgents = filterITAgents(agents, tickets);
+  
   const agentMap: Record<number, { 
     id: number;
     name: string; 
@@ -232,8 +273,8 @@ function createAgentPerformanceData(tickets: Ticket[], agents: Agent[]): Array<{
     responseCount: number;
   }> = {};
   
-  // Initialize agent data
-  agents.forEach(agent => {
+  // Initialize agent data - ONLY IT AGENTS
+  itAgents.forEach(agent => {
     agentMap[agent.id] = {
       id: agent.id,
       name: agent.name || `${agent.first_name || ''} ${agent.last_name || ''}`.trim(),
@@ -244,7 +285,7 @@ function createAgentPerformanceData(tickets: Ticket[], agents: Agent[]): Array<{
     };
   });
   
-  // Count tickets for each agent
+  // Count tickets for each IT agent
   tickets.forEach(ticket => {
     if (ticket.responder_id && agentMap[ticket.responder_id]) {
       agentMap[ticket.responder_id].tickets++;
@@ -262,12 +303,12 @@ function createAgentPerformanceData(tickets: Ticket[], agents: Agent[]): Array<{
     }
   });
 
-  // Calculate averages and determine workload
+  // Calculate averages and determine workload - based on IT team size
   const totalTickets = tickets.length;
-  const avgTicketsPerAgent = totalTickets / agents.length;
+  const avgTicketsPerAgent = itAgents.length > 0 ? totalTickets / itAgents.length : 0;
   
   return Object.values(agentMap)
-    .filter(agent => agent.tickets > 0)
+    .filter(agent => agent.tickets > 0) // Only show agents with actual tickets
     .map(agent => {
       const resolutionRate = agent.tickets > 0 ? Math.round((agent.resolved / agent.tickets) * 100) : 0;
       const avgResponseTime = agent.responseCount > 0 
@@ -276,11 +317,15 @@ function createAgentPerformanceData(tickets: Ticket[], agents: Agent[]): Array<{
       
       // Determine workload based on tickets compared to average
       let workload: 'Light' | 'Moderate' | 'Heavy' | 'Overloaded';
-      const ratio = agent.tickets / avgTicketsPerAgent;
-      if (ratio < 0.5) workload = 'Light';
-      else if (ratio < 1.0) workload = 'Moderate';
-      else if (ratio < 1.5) workload = 'Heavy';
-      else workload = 'Overloaded';
+      if (avgTicketsPerAgent === 0) {
+        workload = 'Light';
+      } else {
+        const ratio = agent.tickets / avgTicketsPerAgent;
+        if (ratio < 0.5) workload = 'Light';
+        else if (ratio < 1.0) workload = 'Moderate';
+        else if (ratio < 1.5) workload = 'Heavy';
+        else workload = 'Overloaded';
+      }
 
       return {
         id: agent.id,
@@ -295,7 +340,7 @@ function createAgentPerformanceData(tickets: Ticket[], agents: Agent[]): Array<{
 }
 
 /**
- * Create agent workload distribution chart data
+ * Create agent workload distribution chart data - IT TEAM ONLY
  */
 function createAgentWorkloadData(tickets: Ticket[], agents: Agent[]): Array<{ name: string; value: number }> {
   const agentPerformance = createAgentPerformanceData(tickets, agents);
@@ -378,37 +423,70 @@ function calculateAvgResponseTime(tickets: Ticket[]): string {
 }
 
 /**
- * Server action to fetch dashboard data with filtering
+ * Server action to fetch dashboard data with filtering - OPTIMIZED for rate limits
+ * PRO Plan: 400 calls/min overall, 120 calls/min for tickets
  */
 export async function fetchDashboardData(filters: DashboardFilters = { timeRange: 'week' }): Promise<{ success: boolean; data?: DashboardData; error?: string }> {
   try {
     console.log('🏗️ Fetching dashboard data from server action with filters:', filters);
 
-    // Fetch data from Freshservice API
-    const [ticketsResponse, agentsResponse] = await Promise.allSettled([
-      freshserviceApi.getTickets(1, 100),
-      freshserviceApi.getAgents(1, 50),
-    ]);
+    // OPTIMIZED: Start with fewer pages to respect rate limits
+    let allTickets: Ticket[] = [];
+    let page = 1;
+    let hasMorePages = true;
+    const maxInitialPages = 5; // Start with 5 pages (500 tickets) to avoid rate limits
+    
+    console.log('📋 Fetching tickets with smart pagination (rate limit aware)...');
+    
+    while (hasMorePages && page <= maxInitialPages) {
+      try {
+        const ticketsResponse = await freshserviceApi.getTickets(page, 100);
+        
+        if (ticketsResponse.tickets && ticketsResponse.tickets.length > 0) {
+          allTickets = allTickets.concat(ticketsResponse.tickets);
+          console.log(`✅ Page ${page}: ${ticketsResponse.tickets.length} tickets (Total: ${allTickets.length})`);
+          
+          // Check if we should continue
+          if (ticketsResponse.tickets.length < 100) {
+            hasMorePages = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMorePages = false;
+        }
+      } catch (pageError: any) {
+        console.warn(`⚠️ Error fetching page ${page}:`, pageError);
+        
+        // If rate limited, don't try more pages
+        if (pageError.message?.includes('Rate limit')) {
+          console.log('🚫 Rate limit reached, stopping pagination');
+          break;
+        }
+        
+        hasMorePages = false;
+      }
+    }
 
-    let tickets: Ticket[] = [];
+    // Fetch agents (single call)
     let agents: Agent[] = [];
-
-    if (ticketsResponse.status === 'fulfilled') {
-      tickets = ticketsResponse.value.tickets || [];
-      console.log(`✅ Retrieved ${tickets.length} tickets`);
-    } else {
-      console.warn('⚠️ Failed to fetch tickets:', ticketsResponse.reason);
-    }
-
-    if (agentsResponse.status === 'fulfilled') {
-      agents = agentsResponse.value.agents || [];
+    try {
+      const agentsResponse = await freshserviceApi.getAgents(1, 100);
+      agents = agentsResponse.agents || [];
       console.log(`✅ Retrieved ${agents.length} agents`);
-    } else {
-      console.warn('⚠️ Failed to fetch agents:', agentsResponse.reason);
+    } catch (agentsError: any) {
+      console.warn('⚠️ Failed to fetch agents:', agentsError);
+      
+      // Don't fail the whole dashboard if agents fail
+      if (!agentsError.message?.includes('Rate limit')) {
+        console.log('📊 Continuing without agent data...');
+      }
     }
+
+    console.log(`🎉 Successfully fetched ${allTickets.length} total tickets (from ${page - 1} pages)`);
 
     // Apply filters to tickets
-    const filteredTickets = filterTickets(tickets, filters);
+    const filteredTickets = filterTickets(allTickets, filters);
     console.log(`🔍 Filtered to ${filteredTickets.length} tickets based on criteria`);
 
     // Transform data for dashboard
@@ -428,23 +506,40 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
         slaBreaches: countSLABreaches(filteredTickets),
         overdueTickets: countOverdueTickets(filteredTickets),
         unassignedTickets: countUnassignedTickets(filteredTickets),
-        totalAgents: agents.filter(a => a.active).length
+        totalAgents: filterITAgents(agents, filteredTickets).length // Count only IT team members
       }
     };
 
+    // Get API usage stats
+    const apiStats = freshserviceApi.getStats();
+    console.log('📊 API Usage Stats:', apiStats);
+
     console.log('🎉 Dashboard data processed successfully');
     console.log('📊 Data Summary:', {
-      tickets: filteredTickets.length,
+      totalTicketsFetched: allTickets.length,
+      filteredTickets: filteredTickets.length,
       agents: agents.length,
       openTickets: dashboardData.stats.openTickets,
       resolvedToday: dashboardData.stats.resolvedToday,
-      slaBreaches: dashboardData.stats.slaBreaches
+      slaBreaches: dashboardData.stats.slaBreaches,
+      pagesRequested: page - 1,
+      cacheStats: apiStats.cache,
+      rateLimitStats: apiStats.rateLimit
     });
 
     return { success: true, data: dashboardData };
 
   } catch (error: any) {
     console.error('💥 Error fetching dashboard data:', error);
+    
+    // Provide helpful error messages for rate limiting
+    if (error.message?.includes('Rate limit')) {
+      return { 
+        success: false, 
+        error: `API rate limit reached. Please wait a moment before refreshing. ${error.message}` 
+      };
+    }
+    
     return { 
       success: false, 
       error: error.message || 'Failed to fetch dashboard data' 

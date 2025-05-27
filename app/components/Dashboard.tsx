@@ -7,12 +7,58 @@ import { formatNumber, formatDate, formatHours } from '../lib/utils'
 import { useState } from 'react'
 import { DashboardData, DashboardFilters, fetchDashboardData, testApiConnection } from '../actions/dashboard'
 import FilterBar from './FilterBar'
+import Link from 'next/link'
+import { Info } from 'lucide-react'
 
+// CONSISTENT COLOR PALETTE - Following Data Rocks principles
+const DASHBOARD_COLORS = {
+  // Primary brand colors
+  primary: '#4F46E5',      // Indigo - main brand color
+  primaryLight: '#A5B4FC', // Light indigo for secondary elements
+  
+  // Status colors with good contrast
+  success: '#059669',      // Green - positive/resolved
+  warning: '#D97706',      // Orange - attention needed  
+  danger: '#DC2626',       // Red - critical/urgent
+  info: '#0284C7',         // Blue - informational
+  
+  // Neutral colors for hierarchy
+  neutral: '#6B7280',      // Gray for secondary text
+  neutralLight: '#F3F4F6', // Light gray for backgrounds
+  background: '#FFFFFF',   // Pure white background
+  
+  // Chart colors - limited palette for consistency
+  chart: {
+    primary: '#4F46E5',    // Main data color
+    secondary: '#10B981',  // Secondary data color  
+    tertiary: '#F59E0B',   // Third data color (sparingly used)
+    neutral: '#6B7280',    // For less important data
+  }
+}
+
+// Simplified priority colors - better contrast
 const PRIORITY_COLORS: Record<string, string> = {
-  'Low': '#94a3b8',
-  'Medium': '#64748b', 
-  'High': '#475569',
-  'Urgent': '#0f172a'
+  'Low': DASHBOARD_COLORS.neutral,
+  'Medium': DASHBOARD_COLORS.info, 
+  'High': DASHBOARD_COLORS.warning,
+  'Urgent': DASHBOARD_COLORS.danger
+}
+
+// Status colors for consistency across charts
+const STATUS_COLORS: Record<string, string> = {
+  'Open': DASHBOARD_COLORS.chart.primary,
+  'Pending': DASHBOARD_COLORS.warning,
+  'Resolved': DASHBOARD_COLORS.success,
+  'Closed': DASHBOARD_COLORS.neutral,
+  'New': DASHBOARD_COLORS.info
+}
+
+// Workload colors with clear meaning
+const WORKLOAD_COLORS: Record<string, string> = {
+  'Light': DASHBOARD_COLORS.success,
+  'Moderate': DASHBOARD_COLORS.info,
+  'Heavy': DASHBOARD_COLORS.warning,
+  'Overloaded': DASHBOARD_COLORS.danger
 }
 
 // Mock data for fallback when API fails
@@ -148,31 +194,41 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
     }
   }
 
-  // Add colors to priority data for the pie chart
+  // Add consistent colors to data
+  const statusDataWithColors = dashboardData.ticketsByStatus.map(item => ({
+    ...item,
+    color: STATUS_COLORS[item.name] || DASHBOARD_COLORS.chart.neutral
+  }))
+
   const priorityDataWithColors = dashboardData.ticketsByPriority.map(item => ({
     ...item,
-    color: PRIORITY_COLORS[item.name] || '#64748b'
+    color: PRIORITY_COLORS[item.name] || DASHBOARD_COLORS.chart.neutral
+  }))
+
+  const workloadDataWithColors = dashboardData.agentWorkload.map(item => ({
+    ...item,
+    color: WORKLOAD_COLORS[item.name] || DASHBOARD_COLORS.chart.neutral
   }))
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen" style={{ backgroundColor: DASHBOARD_COLORS.background }}>
       {/* Header */}
-      <div className="border-b border-border bg-card">
+      <div className="border-b border-gray-200 bg-white">
         <div className="container mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-4xl font-bold text-foreground">Freshservice Dashboard</h1>
-              <p className="text-muted-foreground mt-2">Monitor your support tickets and team performance</p>
+              <h1 className="text-4xl font-bold text-gray-900">Freshservice Dashboard</h1>
+              <p className="text-gray-600 mt-2">Monitor your support tickets and team performance</p>
               
               {/* Status indicator */}
               <div className="flex items-center mt-3 space-x-4">
                 <div className="flex items-center space-x-2">
                   <div className={`h-2 w-2 rounded-full ${
                     connectionStatus === 'connected' ? 'bg-green-500' :
-                    connectionStatus === 'testing' ? 'bg-yellow-500' :
+                    connectionStatus === 'testing' ? 'bg-orange-500' :
                     'bg-red-500'
                   }`} />
-                  <span className="text-sm text-muted-foreground">
+                  <span className="text-sm text-gray-600">
                     {connectionStatus === 'connected' ? 'Connected to Freshservice' :
                      connectionStatus === 'testing' ? 'Testing connection...' :
                      'Connection issues'}
@@ -180,20 +236,32 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                 </div>
                 
                 {isUsingMockData && (
-                  <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
+                  <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-full border border-orange-200">
                     Using sample data
                   </span>
                 )}
               </div>
             </div>
             
-            <div className="flex space-x-2">
+            <div className="flex space-x-3">
+              <Link href="/about">
+                <Button 
+                  variant="outline" 
+                  size="lg" 
+                  className="flex items-center border-gray-300 hover:border-gray-400"
+                >
+                  <Info className="w-4 h-4 mr-2" />
+                  About Metrics
+                </Button>
+              </Link>
+              
               {connectionStatus === 'failed' && (
                 <Button 
                   onClick={handleTestConnection}
                   disabled={false}
                   variant="outline"
                   size="lg"
+                  className="border-orange-300 text-orange-700 hover:bg-orange-50"
                 >
                   Test Connection
                 </Button>
@@ -204,6 +272,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                   disabled={true}
                   variant="outline"
                   size="lg"
+                  className="border-gray-300"
                 >
                   Testing...
                 </Button>
@@ -212,8 +281,9 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
               <Button 
                 onClick={handleRefresh}
                 disabled={isRefreshing}
-                variant="outline"
                 size="lg"
+                style={{ backgroundColor: DASHBOARD_COLORS.primary }}
+                className="text-white hover:opacity-90"
               >
                 {isRefreshing ? 'Refreshing...' : 'Refresh Data'}
               </Button>
@@ -252,99 +322,109 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
           isLoading={isRefreshing}
         />
 
-        {/* Enhanced Overview Cards */}
+        {/* Enhanced Overview Cards with consistent colors */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-6 mb-8">
-          <Card>
+          <Card className="border-gray-200 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Tickets</CardTitle>
-              <div className="h-4 w-4 text-muted-foreground">📋</div>
+              <CardTitle className="text-sm font-medium text-gray-700">Total Tickets</CardTitle>
+              <div className="text-gray-400">📋</div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-2xl font-bold text-gray-900">
                 {formatNumber(dashboardData.ticketsByStatus.reduce((sum, item) => sum + item.value, 0))}
               </div>
-              <p className="text-xs text-muted-foreground">In selected period</p>
+              <p className="text-xs text-gray-600 mt-1">In selected period</p>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-gray-200 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Open Tickets</CardTitle>
-              <div className="h-4 w-4 text-muted-foreground">🟢</div>
+              <CardTitle className="text-sm font-medium text-gray-700">Open Tickets</CardTitle>
+              <div className="text-gray-400">🔵</div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-600">{formatNumber(dashboardData.stats.openTickets)}</div>
-              <p className="text-xs text-muted-foreground">Currently open</p>
+              <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.chart.primary }}>
+                {formatNumber(dashboardData.stats.openTickets)}
+              </div>
+              <p className="text-xs text-gray-600 mt-1">Currently open</p>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-gray-200 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">SLA Breaches</CardTitle>
-              <div className="h-4 w-4 text-muted-foreground">⚠️</div>
+              <CardTitle className="text-sm font-medium text-gray-700">SLA Breaches</CardTitle>
+              <div className="text-gray-400">⚠️</div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-red-600">{formatNumber(dashboardData.stats.slaBreaches)}</div>
-              <p className="text-xs text-muted-foreground">Past due date</p>
+              <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.danger }}>
+                {formatNumber(dashboardData.stats.slaBreaches)}
+              </div>
+              <p className="text-xs text-gray-600 mt-1">Past due date</p>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-gray-200 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Unassigned</CardTitle>
-              <div className="h-4 w-4 text-muted-foreground">👤</div>
+              <CardTitle className="text-sm font-medium text-gray-700">Unassigned</CardTitle>
+              <div className="text-gray-400">👤</div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-purple-600">{formatNumber(dashboardData.stats.unassignedTickets)}</div>
-              <p className="text-xs text-muted-foreground">Need assignment</p>
+              <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.warning }}>
+                {formatNumber(dashboardData.stats.unassignedTickets)}
+              </div>
+              <p className="text-xs text-gray-600 mt-1">Need assignment</p>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-gray-200 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Resolved Today</CardTitle>
-              <div className="h-4 w-4 text-muted-foreground">✅</div>
+              <CardTitle className="text-sm font-medium text-gray-700">Resolved Today</CardTitle>
+              <div className="text-gray-400">✅</div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{formatNumber(dashboardData.stats.resolvedToday)}</div>
-              <p className="text-xs text-muted-foreground">Closed today</p>
+              <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.success }}>
+                {formatNumber(dashboardData.stats.resolvedToday)}
+              </div>
+              <p className="text-xs text-gray-600 mt-1">Closed today</p>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-gray-200 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Agents</CardTitle>
-              <div className="h-4 w-4 text-muted-foreground">👥</div>
+              <CardTitle className="text-sm font-medium text-gray-700">Active Agents</CardTitle>
+              <div className="text-gray-400">👥</div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-indigo-600">{formatNumber(dashboardData.stats.totalAgents)}</div>
-              <p className="text-xs text-muted-foreground">Available agents</p>
+              <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.info }}>
+                {formatNumber(dashboardData.stats.totalAgents)}
+              </div>
+              <p className="text-xs text-gray-600 mt-1">Available agents</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Enhanced Charts Grid */}
+        {/* Enhanced Charts Grid with consistent design */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Tickets by Status */}
-          <Card>
+          <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Tickets by Status</CardTitle>
-              <CardDescription>Current distribution</CardDescription>
+              <CardTitle className="text-gray-900">Tickets by Status</CardTitle>
+              <CardDescription className="text-gray-600">Current distribution</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
                   <Pie
-                    data={dashboardData.ticketsByStatus}
+                    data={statusDataWithColors}
                     cx="50%"
                     cy="50%"
-                    outerRadius={70}
-                    fill="#8884d8"
+                    outerRadius={80}
                     dataKey="value"
                     label={({ name, value }) => `${name}: ${value}`}
+                    labelLine={false}
                   >
-                    {dashboardData.ticketsByStatus.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={`hsl(${index * 45}, 70%, 50%)`} />
+                    {statusDataWithColors.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
                   <Tooltip />
@@ -354,10 +434,10 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
           </Card>
 
           {/* Tickets by Priority */}
-          <Card>
+          <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Tickets by Priority</CardTitle>
-              <CardDescription>Priority distribution</CardDescription>
+              <CardTitle className="text-gray-900">Tickets by Priority</CardTitle>
+              <CardDescription className="text-gray-600">Priority distribution</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={250}>
@@ -366,10 +446,10 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                     data={priorityDataWithColors}
                     cx="50%"
                     cy="50%"
-                    outerRadius={70}
-                    fill="#8884d8"
+                    outerRadius={80}
                     dataKey="value"
                     label={({ name, value }) => `${name}: ${value}`}
+                    labelLine={false}
                   >
                     {priorityDataWithColors.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
@@ -382,30 +462,25 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
           </Card>
 
           {/* Agent Workload Distribution */}
-          <Card>
+          <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Agent Workload</CardTitle>
-              <CardDescription>Team capacity overview</CardDescription>
+              <CardTitle className="text-gray-900">Agent Workload</CardTitle>
+              <CardDescription className="text-gray-600">Team capacity overview</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
                   <Pie
-                    data={dashboardData.agentWorkload}
+                    data={workloadDataWithColors}
                     cx="50%"
                     cy="50%"
-                    outerRadius={70}
-                    fill="#8884d8"
+                    outerRadius={80}
                     dataKey="value"
                     label={({ name, value }) => `${name}: ${value}`}
+                    labelLine={false}
                   >
-                    {dashboardData.agentWorkload.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={
-                        entry.name === 'Light' ? '#10b981' :
-                        entry.name === 'Moderate' ? '#3b82f6' :
-                        entry.name === 'Heavy' ? '#f59e0b' :
-                        '#ef4444'
-                      } />
+                    {workloadDataWithColors.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
                   <Tooltip />
@@ -417,108 +492,168 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
 
         {/* Category and Resolution Analysis Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Tickets by Category */}
-          <Card>
+          {/* Tickets by Category - Single color for consistency */}
+          <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Top Categories</CardTitle>
-              <CardDescription>Most common issue categories</CardDescription>
+              <CardTitle className="text-gray-900">Top Categories</CardTitle>
+              <CardDescription className="text-gray-600">Most common issue categories</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={dashboardData.ticketsByCategory}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#6366f1" />
+                <BarChart data={dashboardData.ticketsByCategory} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis 
+                    dataKey="name" 
+                    angle={-45} 
+                    textAnchor="end" 
+                    height={80} 
+                    tick={{ fontSize: 12, fill: '#6B7280' }}
+                  />
+                  <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'white', 
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '6px',
+                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+                    }}
+                  />
+                  <Bar dataKey="value" fill={DASHBOARD_COLORS.chart.primary} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
 
-          {/* Resolution Times */}
-          <Card>
+          {/* Resolution Times - Single color for consistency */}
+          <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Resolution Time Analysis</CardTitle>
-              <CardDescription>How quickly tickets are resolved</CardDescription>
+              <CardTitle className="text-gray-900">Resolution Time Analysis</CardTitle>
+              <CardDescription className="text-gray-600">How quickly tickets are resolved</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={dashboardData.resolutionTimes}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#06b6d4" />
+                <BarChart data={dashboardData.resolutionTimes} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis 
+                    dataKey="name" 
+                    angle={-45} 
+                    textAnchor="end" 
+                    height={80}
+                    tick={{ fontSize: 12, fill: '#6B7280' }}
+                  />
+                  <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'white', 
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '6px',
+                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+                    }}
+                  />
+                  <Bar dataKey="value" fill={DASHBOARD_COLORS.chart.secondary} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
         </div>
 
-        {/* Weekly Trend Chart */}
-        <Card className="mb-8">
+        {/* Weekly Trend Chart - Single color, better design */}
+        <Card className="mb-8 border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle>Weekly Ticket Trend</CardTitle>
-            <CardDescription>Tickets created in the last 7 days</CardDescription>
+            <CardTitle className="text-gray-900">Weekly Ticket Trend</CardTitle>
+            <CardDescription className="text-gray-600">Tickets created in the last 7 days</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={dashboardData.ticketsTrend}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" fill="#3b82f6" />
+              <BarChart data={dashboardData.ticketsTrend} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis 
+                  dataKey="name" 
+                  tick={{ fontSize: 12, fill: '#6B7280' }}
+                />
+                <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'white', 
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '6px',
+                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+                  }}
+                />
+                <Bar dataKey="value" fill={DASHBOARD_COLORS.chart.primary} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        {/* Enhanced Agent Performance */}
-        <Card>
+        {/* Enhanced Agent Performance with better layout */}
+        <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle>Agent Performance Overview</CardTitle>
-            <CardDescription>Detailed agent metrics and workload analysis</CardDescription>
+            <CardTitle className="text-gray-900">Agent Performance Overview</CardTitle>
+            <CardDescription className="text-gray-600">Detailed agent metrics and workload analysis</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6">
-              {/* Performance Chart */}
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={dashboardData.agentPerformance}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
-                  <YAxis />
+            <div className="space-y-8">
+              {/* Performance Chart with better margins and colors */}
+              <ResponsiveContainer width="100%" height={400}>
+                <BarChart 
+                  data={dashboardData.agentPerformance}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 140 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis 
+                    dataKey="name" 
+                    angle={-45} 
+                    textAnchor="end" 
+                    height={140}
+                    interval={0}
+                    fontSize={11}
+                    tick={{ fontSize: 11, fill: '#6B7280' }}
+                  />
+                  <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} />
                   <Tooltip 
                     formatter={(value, name) => [
                       name === 'tickets' ? formatNumber(value as number) : `${value}%`,
                       name === 'tickets' ? 'Tickets Handled' : 'Resolution Rate'
                     ]}
+                    labelFormatter={(label) => `Agent: ${label}`}
+                    contentStyle={{ 
+                      backgroundColor: 'white', 
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '6px',
+                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+                    }}
                   />
-                  <Bar dataKey="tickets" fill="#10b981" name="tickets" />
-                  <Bar dataKey="resolution" fill="#3b82f6" name="resolution" />
+                  <Bar dataKey="tickets" fill={DASHBOARD_COLORS.chart.primary} name="tickets" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="resolution" fill={DASHBOARD_COLORS.chart.secondary} name="resolution" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
 
-              {/* Agent Details Table */}
+              {/* Agent Details Table with improved spacing */}
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b">
-                      <th className="text-left p-2 font-medium">Agent</th>
-                      <th className="text-right p-2 font-medium">Tickets</th>
-                      <th className="text-right p-2 font-medium">Resolution Rate</th>
-                      <th className="text-right p-2 font-medium">Avg Response</th>
-                      <th className="text-center p-2 font-medium">Workload</th>
+                    <tr className="border-b-2 border-gray-100" style={{ backgroundColor: DASHBOARD_COLORS.neutralLight }}>
+                      <th className="text-left p-4 font-semibold text-gray-700 min-w-[160px]">Agent</th>
+                      <th className="text-right p-4 font-semibold text-gray-700 min-w-[80px]">Tickets</th>
+                      <th className="text-right p-4 font-semibold text-gray-700 min-w-[100px]">Resolution Rate</th>
+                      <th className="text-right p-4 font-semibold text-gray-700 min-w-[110px]">Avg Response</th>
+                      <th className="text-center p-4 font-semibold text-gray-700 min-w-[100px]">Workload</th>
                     </tr>
                   </thead>
                   <tbody>
                     {dashboardData.agentPerformance.map((agent, index) => (
-                      <tr key={agent.id} className="border-b hover:bg-muted/50">
-                        <td className="p-2 font-medium">{agent.name}</td>
-                        <td className="text-right p-2">{formatNumber(agent.tickets)}</td>
-                        <td className="text-right p-2">
-                          <span className={`${
+                      <tr key={agent.id} className="border-b border-gray-50 hover:bg-gray-25 transition-colors">
+                        <td className="p-4 font-medium text-gray-900">
+                          <div className="truncate max-w-[150px]" title={agent.name}>
+                            {agent.name}
+                          </div>
+                        </td>
+                        <td className="text-right p-4 text-gray-700">
+                          <span className="font-medium">{formatNumber(agent.tickets)}</span>
+                        </td>
+                        <td className="text-right p-4">
+                          <span className={`font-semibold ${
                             agent.resolution >= 90 ? 'text-green-600' :
                             agent.resolution >= 80 ? 'text-blue-600' :
                             agent.resolution >= 70 ? 'text-orange-600' :
@@ -527,14 +662,16 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                             {agent.resolution}%
                           </span>
                         </td>
-                        <td className="text-right p-2">{agent.avgResponseTime}</td>
-                        <td className="text-center p-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            agent.workload === 'Light' ? 'bg-green-100 text-green-800' :
-                            agent.workload === 'Moderate' ? 'bg-blue-100 text-blue-800' :
-                            agent.workload === 'Heavy' ? 'bg-orange-100 text-orange-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
+                        <td className="text-right p-4 text-gray-700 font-medium">
+                          {agent.avgResponseTime}
+                        </td>
+                        <td className="text-center p-4">
+                          <span 
+                            className="px-3 py-1 rounded-full text-xs font-medium text-white"
+                            style={{ 
+                              backgroundColor: WORKLOAD_COLORS[agent.workload] || DASHBOARD_COLORS.neutral 
+                            }}
+                          >
                             {agent.workload}
                           </span>
                         </td>
@@ -542,6 +679,34 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Summary Stats with consistent colors */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-6 border-t border-gray-100">
+                <div className="text-center">
+                  <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.chart.primary }}>
+                    {dashboardData.agentPerformance.length}
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1">Active Agents</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.success }}>
+                    {Math.round(dashboardData.agentPerformance.reduce((sum, agent) => sum + agent.resolution, 0) / dashboardData.agentPerformance.length)}%
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1">Avg Resolution Rate</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.info }}>
+                    {formatNumber(dashboardData.agentPerformance.reduce((sum, agent) => sum + agent.tickets, 0))}
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1">Total Tickets</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.danger }}>
+                    {dashboardData.agentWorkload.find(w => w.name === 'Overloaded')?.value || 0}
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1">Overloaded Agents</div>
+                </div>
               </div>
             </div>
           </CardContent>
