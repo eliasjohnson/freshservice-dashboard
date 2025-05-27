@@ -284,12 +284,12 @@ export default function FastDashboard({ initialData, error }: FastDashboardProps
       </div>
 
       {/* Connection Status */}
-      {connectionStatus === 'failed' && (
+      {(connectionStatus === 'failed' || connectionStatus === 'testing') && (
         <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200">
           <div className="flex items-center space-x-2">
             <WifiOff className="h-4 w-4 text-red-600" />
             <span className="text-red-800 text-sm">
-              {currentError || 'Connection failed. Using cached data.'}
+              {connectionStatus === 'testing' ? 'Testing connection...' : (currentError || 'Connection failed. Using cached data.')}
             </span>
           </div>
           <Button 
