@@ -26,7 +26,7 @@ export interface DashboardData {
     unassignedTickets: number;
     totalAgents: number;
   };
-  // New category breakdown for IT support
+  // Department breakdown for understanding which teams need most support
   ticketsByCategory: Array<{ name: string; value: number }>;
   // Time-based analysis
   resolutionTimes: Array<{ name: string; value: number }>;
@@ -243,20 +243,21 @@ function createTicketsByPriorityChartData(tickets: Ticket[]): Array<{ name: stri
 }
 
 /**
- * Transform tickets to chart data by category
+ * Transform tickets to chart data by department (requester departments)
  */
-function createTicketsByCategoryChartData(tickets: Ticket[]): Array<{ name: string; value: number }> {
-  const categoryCounts: Record<string, number> = {};
+function createTicketsByDepartmentChartData(tickets: Ticket[]): Array<{ name: string; value: number }> {
+  const departmentCounts: Record<string, number> = {};
   
   tickets.forEach(ticket => {
-    const category = ticket.category || 'Uncategorized';
-    categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+    // Use department_id if available, otherwise mark as unknown
+    const departmentKey = ticket.department_id ? `Dept ${ticket.department_id}` : 'Unknown Dept';
+    departmentCounts[departmentKey] = (departmentCounts[departmentKey] || 0) + 1;
   });
   
-  return Object.entries(categoryCounts)
+  return Object.entries(departmentCounts)
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value)
-    .slice(0, 8); // Top 8 categories
+    .slice(0, 8); // Top 8 departments
 }
 
 /**
@@ -782,7 +783,7 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
     const dashboardData: DashboardData = {
       ticketsByStatus: createTicketsByStatusChartData(filteredTickets),
       ticketsByPriority: createTicketsByPriorityChartData(filteredTickets),
-      ticketsByCategory: createTicketsByCategoryChartData(filteredTickets),
+      ticketsByCategory: createTicketsByDepartmentChartData(filteredTickets),
       ticketsTrend: createTicketsTrendChartData(filteredTickets),
       resolutionTimes: createResolutionTimesData(filteredTickets),
       agentPerformance: createAgentPerformanceData(filteredTickets, agents),

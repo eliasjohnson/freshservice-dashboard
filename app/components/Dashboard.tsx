@@ -74,11 +74,11 @@ const mockData: DashboardData = {
     { name: 'Urgent', value: 18 },
   ],
   ticketsByCategory: [
-    { name: 'Hardware', value: 45 },
-    { name: 'Software', value: 62 },
-    { name: 'Network', value: 28 },
-    { name: 'Security', value: 19 },
-    { name: 'Access', value: 34 },
+    { name: 'Dept 1', value: 45 },
+    { name: 'Dept 2', value: 62 },
+    { name: 'Dept 3', value: 28 },
+    { name: 'Dept 4', value: 19 },
+    { name: 'Unknown Dept', value: 34 },
   ],
   ticketsTrend: [
     { name: 'Sun', value: 6 },
@@ -670,13 +670,13 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
             </CardContent>
           </Card>
 
-          {/* Top Categories */}
+          {/* Top Departments */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Top Categories</CardTitle>
+              <CardTitle className="text-lg">Tickets by Department</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer key={`categories-${refreshKey}`} width="100%" height={250}>
+              <ResponsiveContainer key={`departments-${refreshKey}`} width="100%" height={250}>
                 <LineChart data={dashboardData.ticketsByCategory}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis 
