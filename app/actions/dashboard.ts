@@ -114,6 +114,41 @@ function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
     console.log(`🏢 Filtered to ${filtered.length} tickets from workspace ${targetWorkspace} (was ${beforeWorkspace})`);
   }
 
+  // EXCLUDE ONBOARDING/OFFBOARDING TICKETS
+  const beforeOnboardingFilter = filtered.length;
+  filtered = filtered.filter(ticket => {
+    const subject = (ticket.subject || '').toLowerCase();
+    const category = (ticket.category || '').toLowerCase();
+    const subCategory = (ticket.sub_category || '').toLowerCase();
+    const itemCategory = (ticket.item_category || '').toLowerCase();
+    const description = (ticket.description || '').toLowerCase();
+    const tags = (ticket.tags || []).map(tag => tag.toLowerCase());
+    
+    // Keywords that indicate onboarding/offboarding tickets
+    const excludeKeywords = [
+      'onboarding', 'onboard', 'on-boarding', 'on boarding',
+      'offboarding', 'offboard', 'off-boarding', 'off boarding',
+      'new hire', 'new employee', 'employee setup', 'user setup',
+      'account setup', 'employee onboarding', 'employee offboarding',
+      'termination', 'departure', 'leaving', 'exit',
+      'deactivate user', 'disable user', 'remove access',
+      'workday', 'okta provisioning', 'auto provision'
+    ];
+    
+    // Check if any exclude keywords are found in any of the fields
+    const hasExcludeKeyword = excludeKeywords.some(keyword => 
+      subject.includes(keyword) || 
+      category.includes(keyword) || 
+      subCategory.includes(keyword) || 
+      itemCategory.includes(keyword) ||
+      description.includes(keyword) ||
+      tags.some(tag => tag.includes(keyword))
+    );
+    
+    return !hasExcludeKeyword;
+  });
+  console.log(`🚫 Excluded onboarding/offboarding tickets: ${beforeOnboardingFilter} → ${filtered.length} tickets (removed ${beforeOnboardingFilter - filtered.length})`);
+
   // Filter by agent
   if (filters.agentId && filters.agentId !== 'all') {
     const beforeAgent = filtered.length;

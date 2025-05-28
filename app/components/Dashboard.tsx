@@ -6,7 +6,7 @@ import { Button } from "./ui/button"
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts'
 import { formatNumber } from '../lib/utils'
 import { useState, useEffect } from 'react'
-import { DashboardData, DashboardFilters, fetchDashboardData, testApiConnection } from '../actions/dashboard'
+import { DashboardData, DashboardFilters, fetchDashboardData, fetchAgentList, testApiConnection } from '../actions/dashboard'
 import { Users, Clock, AlertTriangle, CheckCircle, Activity, RotateCcw, Play, Pause } from 'lucide-react'
 
 // Modern color palette inspired by shadcn/ui
@@ -135,12 +135,48 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
     agentId: 'all',
     timeRange: 'week'
   })
+  const [availableAgents, setAvailableAgents] = useState<Array<{ id: number; name: string; department?: string }>>([])
+  const [agentsLoading, setAgentsLoading] = useState(false)
 
   // Auto-refresh functionality for TV displays
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [refreshInterval, setRefreshInterval] = useState(5) // minutes
   const [countdown, setCountdown] = useState(0)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
+
+  // Fetch available agents on component mount
+  useEffect(() => {
+    const loadAgents = async () => {
+      setAgentsLoading(true)
+      try {
+        const result = await fetchAgentList()
+        if (result.success && result.agents) {
+          setAvailableAgents(result.agents)
+          console.log(`✅ Loaded ${result.agents.length} agents for filtering`)
+        } else {
+          console.warn('⚠️ Failed to load agents:', result.error)
+        }
+      } catch (err: any) {
+        console.error('💥 Error loading agents:', err)
+      } finally {
+        setAgentsLoading(false)
+      }
+    }
+
+    loadAgents()
+  }, [])
+
+  // Auto-refresh when filters change (with debounce)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (!isRefreshing) {
+        console.log('🔄 Filters changed, refreshing data...', filters)
+        handleRefresh()
+      }
+    }, 300) // 300ms debounce
+
+    return () => clearTimeout(timeoutId)
+  }, [filters.agentId, filters.timeRange]) // Only watch the actual filter values
 
   // Auto-refresh timer effect
   useEffect(() => {
@@ -321,9 +357,18 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                 <select 
                   value={filters.agentId}
                   onChange={(e) => setFilters({...filters, agentId: e.target.value as any})}
-                  className="h-8 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  disabled={agentsLoading}
+                  className="h-8 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
                 >
-                  <option value="all">All Agents</option>
+                  <option value="all">
+                    {agentsLoading ? 'Loading agents...' : `All Agents${availableAgents.length > 0 ? ` (${availableAgents.length})` : ''}`}
+                  </option>
+                  {availableAgents.map(agent => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name}
+                      {agent.department ? ` - ${agent.department}` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 
