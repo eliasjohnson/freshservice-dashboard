@@ -74,11 +74,14 @@ const mockData: DashboardData = {
     { name: 'Urgent', value: 18 },
   ],
   ticketsByCategory: [
-    { name: 'Dept 1', value: 45 },
-    { name: 'Dept 2', value: 62 },
-    { name: 'Dept 3', value: 28 },
-    { name: 'Dept 4', value: 19 },
-    { name: 'Unknown Dept', value: 34 },
+    { name: 'Group 1', value: 45 },
+    { name: 'Group 2', value: 38 },
+    { name: 'Marketing', value: 28 },
+    { name: 'Sales', value: 24 },
+    { name: 'Finance', value: 19 },
+    { name: 'HR', value: 16 },
+    { name: 'Operations', value: 12 },
+    { name: 'Unknown Dept', value: 8 },
   ],
   ticketsTrend: [
     { name: 'Sun', value: 6 },
@@ -683,11 +686,14 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                     dataKey="name" 
                     angle={-45} 
                     textAnchor="end" 
-                    height={80} 
+                    height={90} 
+                    interval={0}
                     className="text-xs fill-muted-foreground"
                   />
                   <YAxis className="text-xs fill-muted-foreground" />
                   <Tooltip 
+                    labelFormatter={(label) => `Department: ${label}`}
+                    formatter={(value) => [`${value} tickets`, 'Ticket Count']}
                     contentStyle={{ 
                       backgroundColor: 'hsl(var(--background))', 
                       border: '1px solid hsl(var(--border))',

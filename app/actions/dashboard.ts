@@ -249,15 +249,43 @@ function createTicketsByDepartmentChartData(tickets: Ticket[]): Array<{ name: st
   const departmentCounts: Record<string, number> = {};
   
   tickets.forEach(ticket => {
-    // Use department_id if available, otherwise mark as unknown
-    const departmentKey = ticket.department_id ? `Dept ${ticket.department_id}` : 'Unknown Dept';
-    departmentCounts[departmentKey] = (departmentCounts[departmentKey] || 0) + 1;
+    let departmentName = 'Unknown Dept';
+    
+    // Try multiple sources to identify department
+    if (ticket.group_id) {
+      departmentName = `Group ${ticket.group_id}`;
+    } else if (ticket.department_id) {
+      departmentName = `Dept ${ticket.department_id}`;
+    } else if (ticket.category) {
+      // Sometimes category contains department-like information
+      departmentName = ticket.category;
+    } else if (ticket.sub_category) {
+      // Sub-category might contain department info
+      departmentName = ticket.sub_category;
+    } else if (ticket.custom_fields) {
+      // Check custom fields for department information
+      const customDept = ticket.custom_fields['department'] || 
+                        ticket.custom_fields['dept'] || 
+                        ticket.custom_fields['team'] ||
+                        ticket.custom_fields['business_unit'];
+      if (customDept) {
+        departmentName = String(customDept);
+      }
+    }
+    
+    // Clean up department name
+    departmentName = departmentName.trim();
+    if (departmentName.length > 30) {
+      departmentName = departmentName.substring(0, 30) + '...';
+    }
+    
+    departmentCounts[departmentName] = (departmentCounts[departmentName] || 0) + 1;
   });
   
   return Object.entries(departmentCounts)
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value)
-    .slice(0, 8); // Top 8 departments
+    .slice(0, 10); // Top 10 departments for better visibility
 }
 
 /**
