@@ -45,11 +45,11 @@ export interface DashboardFilters {
 
 // Status and priority mappings
 const TICKET_STATUS: Record<number, string> = {
-  1: 'Open',
-  2: 'Pending',
-  3: 'Resolved',
-  4: 'Closed',
-  5: 'New',
+  2: 'Open',
+  3: 'Pending',
+  4: 'Resolved',
+  5: 'Closed',
+  1: 'New', // Keep this in case there are any status 1 tickets
 };
 
 const TICKET_PRIORITY: Record<number, string> = {
@@ -64,14 +64,61 @@ const TICKET_PRIORITY: Record<number, string> = {
  */
 function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
   let filtered = [...tickets];
+  console.log(`🎯 Starting with ${filtered.length} total tickets`);
 
-  // FIRST: Filter by IT Support workspace only (workspace_id: 2)
-  filtered = filtered.filter(ticket => ticket.workspace_id === 2);
-  console.log(`🏢 Filtered to ${filtered.length} tickets from IT Support workspace`);
+  // Debug: Show workspace distribution
+  const workspaceCounts: Record<number, number> = {};
+  tickets.forEach(ticket => {
+    if (ticket.workspace_id !== undefined) {
+      workspaceCounts[ticket.workspace_id] = (workspaceCounts[ticket.workspace_id] || 0) + 1;
+    }
+  });
+  console.log(`🏢 Workspace distribution:`, Object.entries(workspaceCounts).map(([id, count]) => 
+    `Workspace ${id}: ${count} tickets`
+  ).join(', '));
+
+  // Debug: Show status distribution of all tickets
+  const allStatusCounts: Record<number, number> = {};
+  tickets.forEach(ticket => {
+    allStatusCounts[ticket.status] = (allStatusCounts[ticket.status] || 0) + 1;
+  });
+  console.log(`📊 All tickets by status:`, Object.entries(allStatusCounts).map(([status, count]) => 
+    `${TICKET_STATUS[parseInt(status)] || 'Unknown'} (${status}): ${count}`
+  ).join(', '));
+
+  // FLEXIBLE: Try to find IT Support workspace or use all tickets if only one workspace
+  const uniqueWorkspaces = [...new Set(tickets.map(t => t.workspace_id).filter(id => id !== undefined))] as number[];
+  console.log(`🏢 Found ${uniqueWorkspaces.length} unique workspaces: [${uniqueWorkspaces.join(', ')}]`);
+  
+  if (uniqueWorkspaces.length === 1) {
+    // If only one workspace, use all tickets
+    console.log(`🏢 Only one workspace found (${uniqueWorkspaces[0]}), using all tickets`);
+  } else {
+    // Try workspace_id 2 first, then 1, then use the one with most tickets
+    let targetWorkspace = 2;
+    if (!uniqueWorkspaces.includes(2)) {
+      if (uniqueWorkspaces.includes(1)) {
+        targetWorkspace = 1;
+        console.log(`🏢 Workspace 2 not found, using workspace 1`);
+      } else {
+        // Use workspace with most tickets
+        targetWorkspace = uniqueWorkspaces.reduce((max, current) => 
+          workspaceCounts[current] > workspaceCounts[max] ? current : max
+        );
+        console.log(`🏢 Using workspace ${targetWorkspace} (has most tickets: ${workspaceCounts[targetWorkspace]})`);
+      }
+    }
+    
+    const beforeWorkspace = filtered.length;
+    filtered = filtered.filter(ticket => ticket.workspace_id === targetWorkspace);
+    console.log(`🏢 Filtered to ${filtered.length} tickets from workspace ${targetWorkspace} (was ${beforeWorkspace})`);
+  }
 
   // Filter by agent
   if (filters.agentId && filters.agentId !== 'all') {
+    const beforeAgent = filtered.length;
     filtered = filtered.filter(ticket => ticket.responder_id === filters.agentId);
+    console.log(`👤 Agent filter (${filters.agentId}): ${beforeAgent} → ${filtered.length} tickets`);
   }
 
   // Filter by time range
@@ -80,7 +127,8 @@ function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
   
   switch (filters.timeRange) {
     case 'today':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      // Show tickets from last 24 hours instead of just since midnight
+      startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       break;
     case 'week':
       startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -96,18 +144,34 @@ function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
       startDate = new Date(0);
   }
 
+  const beforeTime = filtered.length;
   filtered = filtered.filter(ticket => new Date(ticket.created_at) >= startDate);
+  console.log(`⏰ Time filter (${filters.timeRange}, since ${startDate.toISOString()}): ${beforeTime} → ${filtered.length} tickets`);
 
   // Filter by priority
   if (filters.priority && filters.priority.length > 0) {
+    const beforePriority = filtered.length;
     filtered = filtered.filter(ticket => filters.priority!.includes(ticket.priority));
+    console.log(`🔥 Priority filter (${filters.priority.join(',')}): ${beforePriority} → ${filtered.length} tickets`);
   }
 
   // Filter by status
   if (filters.status && filters.status.length > 0) {
+    const beforeStatus = filtered.length;
     filtered = filtered.filter(ticket => filters.status!.includes(ticket.status));
+    console.log(`📊 Status filter (${filters.status.join(',')}): ${beforeStatus} → ${filtered.length} tickets`);
+    
+    // Debug: Show status distribution of remaining tickets
+    const statusCounts: Record<number, number> = {};
+    filtered.forEach(ticket => {
+      statusCounts[ticket.status] = (statusCounts[ticket.status] || 0) + 1;
+    });
+    console.log(`📊 Remaining tickets by status:`, Object.entries(statusCounts).map(([status, count]) => 
+      `${TICKET_STATUS[parseInt(status)] || 'Unknown'} (${status}): ${count}`
+    ).join(', '));
   }
 
+  console.log(`🎯 Final filtered result: ${filtered.length} tickets`);
   return filtered;
 }
 
@@ -193,7 +257,7 @@ function createResolutionTimesData(tickets: Ticket[]): Array<{ name: string; val
     '> 3 days': 0
   };
 
-  const resolvedTickets = tickets.filter(t => t.status === 3 || t.status === 4);
+  const resolvedTickets = tickets.filter(t => t.status === 4 || t.status === 5); // Resolved or Closed
   
   resolvedTickets.forEach(ticket => {
     const created = new Date(ticket.created_at);
@@ -217,37 +281,62 @@ function createResolutionTimesData(tickets: Ticket[]): Array<{ name: string; val
 }
 
 /**
- * Filter agents to only include IT team members
- * Now based on agents who actually handle tickets in the IT Support workspace
+ * Filter agents to only include team members who handle tickets
+ * Now based on agents who actually handle tickets in the primary workspace
  */
 function filterITAgents(agents: Agent[], tickets: Ticket[]): Agent[] {
-  // Get all responder IDs from IT Support workspace tickets
-  const itTickets = tickets.filter(ticket => ticket.workspace_id === 2);
-  const itResponderIds = new Set(
-    itTickets
+  // Get all responder IDs from tickets (use the same workspace logic as filtering)
+  const uniqueWorkspaces = [...new Set(tickets.map(t => t.workspace_id).filter(id => id !== undefined))] as number[];
+  let targetWorkspace: number;
+  
+  if (uniqueWorkspaces.length === 1) {
+    targetWorkspace = uniqueWorkspaces[0];
+  } else {
+    // Use same logic as filterTickets
+    targetWorkspace = 2;
+    if (!uniqueWorkspaces.includes(2)) {
+      if (uniqueWorkspaces.includes(1)) {
+        targetWorkspace = 1;
+      } else {
+        const workspaceCounts: Record<number, number> = {};
+        tickets.forEach(ticket => {
+          if (ticket.workspace_id !== undefined) {
+            workspaceCounts[ticket.workspace_id] = (workspaceCounts[ticket.workspace_id] || 0) + 1;
+          }
+        });
+        targetWorkspace = uniqueWorkspaces.reduce((max, current) => 
+          workspaceCounts[current] > workspaceCounts[max] ? current : max
+        );
+      }
+    }
+  }
+
+  const relevantTickets = tickets.filter(ticket => ticket.workspace_id === targetWorkspace);
+  const responderIds = new Set(
+    relevantTickets
       .map(ticket => ticket.responder_id)
       .filter(id => id !== null && id !== undefined) as number[]
   );
 
-  console.log(`🎯 Found ${itResponderIds.size} unique responders in IT Support workspace`);
+  console.log(`🎯 Found ${responderIds.size} unique responders in workspace ${targetWorkspace}`);
 
-  // Filter agents to only those who handle IT Support tickets
-  const itAgents = agents.filter(agent => {
+  // Filter agents to only those who handle tickets in the target workspace
+  const activeAgents = agents.filter(agent => {
     // Check if agent is active first
     if (!agent.active) return false;
     
-    // Check if agent handles tickets in IT Support workspace
-    const isITResponder = itResponderIds.has(agent.id);
+    // Check if agent handles tickets in target workspace
+    const isResponder = responderIds.has(agent.id);
     
-    if (isITResponder) {
-      console.log(`   ✅ IT Agent: ${agent.first_name} ${agent.last_name} - ${agent.job_title || 'No title'}`);
+    if (isResponder) {
+      console.log(`   ✅ Active Agent: ${agent.first_name} ${agent.last_name} - ${agent.job_title || 'No title'}`);
     }
     
-    return isITResponder;
+    return isResponder;
   });
   
-  console.log(`🎯 Filtered to ${itAgents.length} IT team members from ${agents.length} total agents (based on IT workspace ticket handling)`);
-  return itAgents;
+  console.log(`🎯 Filtered to ${activeAgents.length} active team members from ${agents.length} total agents (based on workspace ${targetWorkspace} ticket handling)`);
+  return activeAgents;
 }
 
 /**
@@ -291,7 +380,7 @@ function createAgentPerformanceData(tickets: Ticket[], agents: Agent[]): Array<{
       agentMap[ticket.responder_id].tickets++;
       
       // Count as resolved if status is resolved or closed
-      if (ticket.status === 3 || ticket.status === 4) {
+      if (ticket.status === 4 || ticket.status === 5) { // Resolved or Closed
         agentMap[ticket.responder_id].resolved++;
       }
 
@@ -365,7 +454,7 @@ function countResolvedToday(tickets: Ticket[]): number {
   const today = new Date().toISOString().split('T')[0];
   return tickets.filter((ticket: Ticket) => {
     const updated = new Date(ticket.updated_at).toISOString().split('T')[0];
-    return updated === today && (ticket.status === 3 || ticket.status === 4);
+    return updated === today && (ticket.status === 4 || ticket.status === 5); // Resolved or Closed
   }).length;
 }
 
@@ -377,7 +466,7 @@ function countSLABreaches(tickets: Ticket[]): number {
   return tickets.filter(ticket => {
     if (!ticket.due_by) return false;
     const dueDate = new Date(ticket.due_by);
-    return now > dueDate && (ticket.status === 1 || ticket.status === 2 || ticket.status === 5);
+    return now > dueDate && (ticket.status === 2 || ticket.status === 3); // Open or Pending
   }).length;
 }
 
@@ -389,7 +478,7 @@ function countOverdueTickets(tickets: Ticket[]): number {
   return tickets.filter(ticket => {
     if (!ticket.fr_due_by) return false;
     const dueDate = new Date(ticket.fr_due_by);
-    return now > dueDate && (ticket.status === 1 || ticket.status === 2 || ticket.status === 5);
+    return now > dueDate && (ticket.status === 2 || ticket.status === 3); // Open or Pending
   }).length;
 }
 
@@ -398,17 +487,22 @@ function countOverdueTickets(tickets: Ticket[]): number {
  */
 function countUnassignedTickets(tickets: Ticket[]): number {
   return tickets.filter(ticket => 
-    !ticket.responder_id && (ticket.status === 1 || ticket.status === 2 || ticket.status === 5)
+    !ticket.responder_id && (ticket.status === 2 || ticket.status === 3) // Open or Pending
   ).length;
 }
 
 /**
  * Calculate average response time
+ * Since Freshservice doesn't provide stats.response_time in basic API calls,
+ * we'll estimate based on available timestamp data
  */
 function calculateAvgResponseTime(tickets: Ticket[]): string {
   let totalResponseTime = 0;
   let count = 0;
   
+  console.log('🔍 === RESPONSE TIME ANALYSIS ===');
+  
+  // First, try to use the stats.response_time field (if available)
   tickets.forEach((ticket: Ticket) => {
     if (ticket.stats && ticket.stats.response_time) {
       totalResponseTime += ticket.stats.response_time;
@@ -416,10 +510,82 @@ function calculateAvgResponseTime(tickets: Ticket[]): string {
     }
   });
   
-  if (count === 0) return '0 min';
+  console.log(`📊 Tickets with stats.response_time: ${count} out of ${tickets.length}`);
+  
+  // If no stats data, calculate estimated response time from timestamps
+  if (count === 0) {
+    console.log('📊 No stats.response_time found, estimating from timestamps...');
+    
+    // Sample first few tickets to see what data is available
+    console.log('🔍 Sample ticket data structures:');
+    tickets.slice(0, 3).forEach((ticket, index) => {
+      console.log(`  Ticket ${index + 1}:`, {
+        id: ticket.id,
+        status: ticket.status,
+        created_at: ticket.created_at,
+        updated_at: ticket.updated_at,
+        responder_id: ticket.responder_id,
+        stats: ticket.stats,
+        // Show all top-level properties to see what's available
+        properties: Object.keys(ticket)
+      });
+    });
+    
+    // For estimation, use tickets that have been assigned and are not just created
+    // This gives us a rough idea of how long it takes to assign/start working on tickets
+    const processedTickets = tickets.filter(ticket => {
+      // Must have a responder and been updated after creation
+      return ticket.responder_id && 
+             ticket.updated_at !== ticket.created_at &&
+             ticket.status !== 2; // Not just open/new tickets
+    });
+    
+    console.log(`📊 Tickets suitable for response time estimation: ${processedTickets.length}`);
+    
+    processedTickets.forEach(ticket => {
+      const created = new Date(ticket.created_at);
+      const updated = new Date(ticket.updated_at);
+      const responseTimeHours = (updated.getTime() - created.getTime()) / (1000 * 60 * 60);
+      
+      // Only include reasonable response times (between 1 minute and 7 days)
+      if (responseTimeHours > 0.016 && responseTimeHours < 168) { // 1 min to 7 days
+        totalResponseTime += responseTimeHours;
+        count++;
+      }
+    });
+    
+    console.log(`📊 Calculated estimated response times for ${count} tickets`);
+    
+    // If still no data, provide a more generic estimate
+    if (count === 0) {
+      // Look at just assigned tickets vs unassigned to give some insight
+      const assignedTickets = tickets.filter(t => t.responder_id).length;
+      const totalTickets = tickets.length;
+      const assignmentRate = totalTickets > 0 ? (assignedTickets / totalTickets * 100).toFixed(0) : 0;
+      
+      console.log(`📊 Assignment rate: ${assignedTickets}/${totalTickets} (${assignmentRate}%)`);
+      return `${assignmentRate}% assigned`;
+    }
+  }
+  
+  if (count === 0) {
+    console.log('⚠️ No response time data available');
+    return 'N/A';
+  }
   
   const avgHours = totalResponseTime / count;
-  return `${(avgHours / 60).toFixed(1)} hours`;
+  let result: string;
+  
+  if (avgHours < 1) {
+    result = `${Math.round(avgHours * 60)} min`;
+  } else if (avgHours < 24) {
+    result = `${avgHours.toFixed(1)} hours`;
+  } else {
+    result = `${(avgHours / 24).toFixed(1)} days`;
+  }
+    
+  console.log(`📊 Average response time: ${result} (from ${count} tickets)`);
+  return result;
 }
 
 /**
@@ -428,7 +594,8 @@ function calculateAvgResponseTime(tickets: Ticket[]): string {
  */
 export async function fetchDashboardData(filters: DashboardFilters = { timeRange: 'week' }): Promise<{ success: boolean; data?: DashboardData; error?: string }> {
   try {
-    console.log('🏗️ Fetching dashboard data from server action with filters:', filters);
+    console.log('🚀 === DASHBOARD DATA FETCH STARTING ===');
+    console.log('🎯 Filters received:', filters);
 
     // OPTIMIZED: Start with fewer pages to respect rate limits
     let allTickets: Ticket[] = [];
@@ -468,6 +635,64 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
       }
     }
 
+    // DEBUGGING: Check raw ticket data
+    console.log('🔍 === RAW TICKET ANALYSIS ===');
+    console.log(`📊 Total tickets fetched: ${allTickets.length}`);
+    
+    if (allTickets.length > 0) {
+      // Check first few tickets
+      console.log('📋 Sample tickets (first 3):');
+      allTickets.slice(0, 3).forEach((ticket, index) => {
+        console.log(`  Ticket ${index + 1}:`, {
+          id: ticket.id,
+          status: ticket.status,
+          workspace_id: ticket.workspace_id,
+          created_at: ticket.created_at,
+          updated_at: ticket.updated_at,
+          responder_id: ticket.responder_id,
+          subject: ticket.subject?.substring(0, 50) + '...',
+          stats: ticket.stats,
+          // Show all top-level properties to see what's available
+          properties: Object.keys(ticket)
+        });
+      });
+
+      // Check status distribution
+      const statusDistribution: Record<number, number> = {};
+      allTickets.forEach(ticket => {
+        statusDistribution[ticket.status] = (statusDistribution[ticket.status] || 0) + 1;
+      });
+      console.log('📊 Status distribution (raw):', statusDistribution);
+      
+      // Check workspace distribution  
+      const workspaceDistribution: Record<number, number> = {};
+      allTickets.forEach(ticket => {
+        if (ticket.workspace_id !== undefined) {
+          workspaceDistribution[ticket.workspace_id] = (workspaceDistribution[ticket.workspace_id] || 0) + 1;
+        }
+      });
+      console.log('🏢 Workspace distribution:', workspaceDistribution);
+      
+      // Check response time related fields
+      console.log('🔍 Response time field analysis:');
+      let hasStatsField = 0;
+      let hasResponseTime = 0;
+      let hasResolvedTickets = 0;
+      let hasResponders = 0;
+      
+      allTickets.forEach(ticket => {
+        if (ticket.stats) hasStatsField++;
+        if (ticket.stats?.response_time) hasResponseTime++;
+        if (ticket.status === 4 || ticket.status === 5) hasResolvedTickets++;
+        if (ticket.responder_id) hasResponders++;
+      });
+      
+      console.log(`  - Tickets with stats field: ${hasStatsField}/${allTickets.length}`);
+      console.log(`  - Tickets with response_time: ${hasResponseTime}/${allTickets.length}`);
+      console.log(`  - Resolved/Closed tickets: ${hasResolvedTickets}/${allTickets.length}`);
+      console.log(`  - Tickets with responders: ${hasResponders}/${allTickets.length}`);
+    }
+
     // Fetch agents (single call)
     let agents: Agent[] = [];
     try {
@@ -486,8 +711,9 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
     console.log(`🎉 Successfully fetched ${allTickets.length} total tickets (from ${page - 1} pages)`);
 
     // Apply filters to tickets
+    console.log('🔧 === STARTING FILTERING ===');
     const filteredTickets = filterTickets(allTickets, filters);
-    console.log(`🔍 Filtered to ${filteredTickets.length} tickets based on criteria`);
+    console.log(`🎯 === FILTERING COMPLETE: ${filteredTickets.length} tickets remain ===`);
 
     // Transform data for dashboard
     const dashboardData: DashboardData = {
@@ -506,9 +732,26 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
         slaBreaches: countSLABreaches(filteredTickets),
         overdueTickets: countOverdueTickets(filteredTickets),
         unassignedTickets: countUnassignedTickets(filteredTickets),
-        totalAgents: filterITAgents(agents, filteredTickets).length // Count only IT team members
+        totalAgents: filterITAgents(agents, allTickets).length // Use all tickets for agent filtering, not just filtered ones
       }
     };
+
+    // DEBUGGING: Final stats calculation
+    console.log('📈 === FINAL STATS CALCULATION ===');
+    console.log('🔍 Open tickets calculation:');
+    const openTicketsDebug = filteredTickets.filter(t => t.status === 2);
+    console.log(`  - Tickets with status === 2 (Open): ${openTicketsDebug.length}`);
+    console.log(`  - Sample open tickets:`, openTicketsDebug.slice(0, 3).map(t => ({
+      id: t.id,
+      status: t.status,
+      subject: t.subject?.substring(0, 30)
+    })));
+
+    // Debug: Log the generated dashboard data
+    console.log('📊 Generated Dashboard Data:');
+    console.log(`   Status breakdown:`, dashboardData.ticketsByStatus);
+    console.log(`   Priority breakdown:`, dashboardData.ticketsByPriority);
+    console.log(`   Stats:`, dashboardData.stats);
 
     // Get API usage stats
     const apiStats = freshserviceApi.getStats();

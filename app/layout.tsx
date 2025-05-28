@@ -6,8 +6,8 @@ import PageTransition from './components/PageTransition'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Freshservice Dashboard',
-  description: 'IT Support Dashboard powered by Freshservice',
+  title: 'Pattern ITSM Dashboard',
+  description: "IT Support Dashboard powered by Pattern's ITSM Freshservice",
 }
 
 export default function RootLayout({
@@ -18,12 +18,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <div className="min-h-screen bg-gray-50/50">
-          <PageTransition>
-            {children}
-          </PageTransition>
-        </div>
+        <PageTransition>
+          {children}
+        </PageTransition>
       </body>
     </html>
   )
-} 
+}

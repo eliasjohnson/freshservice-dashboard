@@ -1,67 +1,65 @@
 'use client'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card"
+import React from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
 import { Button } from "./ui/button"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts'
-import { formatNumber, formatDate, formatHours } from '../lib/utils'
-import { useState } from 'react'
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts'
+import { formatNumber } from '../lib/utils'
+import { useState, useEffect } from 'react'
 import { DashboardData, DashboardFilters, fetchDashboardData, testApiConnection } from '../actions/dashboard'
-import FilterBar from './FilterBar'
-import Link from 'next/link'
-import { Info } from 'lucide-react'
+import { Users, Clock, AlertTriangle, CheckCircle, Activity, RotateCcw, Play, Pause } from 'lucide-react'
 
-// CONSISTENT COLOR PALETTE - Following Data Rocks principles
-const DASHBOARD_COLORS = {
-  // Primary brand colors
-  primary: '#4F46E5',      // Indigo - main brand color
-  primaryLight: '#A5B4FC', // Light indigo for secondary elements
+// Modern color palette inspired by shadcn/ui
+const COLORS = {
+  // Primary colors
+  primary: 'hsl(222.2 84% 4.9%)',      // Almost black
+  primaryForeground: 'hsl(210 40% 98%)', // Almost white
   
-  // Status colors with good contrast
-  success: '#059669',      // Green - positive/resolved
-  warning: '#D97706',      // Orange - attention needed  
-  danger: '#DC2626',       // Red - critical/urgent
-  info: '#0284C7',         // Blue - informational
+  // Muted colors for backgrounds
+  muted: 'hsl(210 40% 96%)',           // Very light gray
+  mutedForeground: 'hsl(215.4 16.3% 46.9%)', // Medium gray
   
-  // Neutral colors for hierarchy
-  neutral: '#6B7280',      // Gray for secondary text
-  neutralLight: '#F3F4F6', // Light gray for backgrounds
-  background: '#FFFFFF',   // Pure white background
+  // Border and accents
+  border: 'hsl(214.3 31.8% 91.4%)',   // Light border
+  accent: 'hsl(210 40% 96%)',          // Accent background
   
-  // Chart colors - limited palette for consistency
+  // Chart colors - modern and accessible
   chart: {
-    primary: '#4F46E5',    // Main data color
-    secondary: '#10B981',  // Secondary data color  
-    tertiary: '#F59E0B',   // Third data color (sparingly used)
-    neutral: '#6B7280',    // For less important data
+    blue: 'hsl(221.2 83.2% 53.3%)',    // Modern blue
+    green: 'hsl(142.1 76.2% 36.3%)',   // Success green
+    orange: 'hsl(24.6 95% 53.1%)',     // Warning orange
+    red: 'hsl(0 84.2% 60.2%)',         // Error red
+    purple: 'hsl(262.1 83.3% 57.8%)',  // Purple accent
+    gray: 'hsl(215.4 16.3% 46.9%)',    // Neutral gray
   }
 }
 
-// Simplified priority colors - better contrast
-const PRIORITY_COLORS: Record<string, string> = {
-  'Low': DASHBOARD_COLORS.neutral,
-  'Medium': DASHBOARD_COLORS.info, 
-  'High': DASHBOARD_COLORS.warning,
-  'Urgent': DASHBOARD_COLORS.danger
-}
-
-// Status colors for consistency across charts
+// Status colors matching shadcn design
 const STATUS_COLORS: Record<string, string> = {
-  'Open': DASHBOARD_COLORS.chart.primary,
-  'Pending': DASHBOARD_COLORS.warning,
-  'Resolved': DASHBOARD_COLORS.success,
-  'Closed': DASHBOARD_COLORS.neutral,
-  'New': DASHBOARD_COLORS.info
+  'Open': COLORS.chart.blue,
+  'Pending': COLORS.chart.orange,
+  'Resolved': COLORS.chart.green,
+  'Closed': COLORS.chart.gray,
+  'New': COLORS.chart.purple
 }
 
-// Workload colors with clear meaning
+// Priority colors - monochrome gradient showing severity (light to dark)
+const PRIORITY_COLORS: Record<string, string> = {
+  'Low': 'hsl(220 13% 85%)',      // Very light gray
+  'Medium': 'hsl(220 13% 65%)',   // Medium gray  
+  'High': 'hsl(220 13% 45%)',     // Dark gray
+  'Urgent': 'hsl(220 13% 25%)'    // Very dark gray
+}
+
+// Workload colors - monochrome gradient showing load intensity (light to dark)
 const WORKLOAD_COLORS: Record<string, string> = {
-  'Light': DASHBOARD_COLORS.success,
-  'Moderate': DASHBOARD_COLORS.info,
-  'Heavy': DASHBOARD_COLORS.warning,
-  'Overloaded': DASHBOARD_COLORS.danger
+  'Light': 'hsl(220 13% 85%)',      // Very light gray
+  'Moderate': 'hsl(220 13% 65%)',   // Medium gray
+  'Heavy': 'hsl(220 13% 45%)',      // Dark gray
+  'Overloaded': 'hsl(220 13% 25%)'  // Very dark gray
 }
 
-// Mock data for fallback when API fails
+// Mock data for fallback
 const mockData: DashboardData = {
   ticketsByStatus: [
     { name: 'Open', value: 43 },
@@ -138,9 +136,62 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
     timeRange: 'week'
   })
 
+  // Auto-refresh functionality for TV displays
+  const [autoRefresh, setAutoRefresh] = useState(false)
+  const [refreshInterval, setRefreshInterval] = useState(5) // minutes
+  const [countdown, setCountdown] = useState(0)
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
+
+  // Auto-refresh timer effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+    let countdownInterval: NodeJS.Timeout | null = null
+
+    if (autoRefresh && !currentError) {
+      // Set up main refresh timer
+      interval = setInterval(() => {
+        console.log('🔄 Auto-refresh triggered')
+        handleRefresh()
+      }, refreshInterval * 60 * 1000)
+
+      // Set up countdown timer for UI
+      setCountdown(refreshInterval * 60)
+      countdownInterval = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            return refreshInterval * 60 // Reset countdown
+          }
+          return prev - 1
+        })
+      }, 1000)
+    }
+
+    return () => {
+      if (interval) clearInterval(interval)
+      if (countdownInterval) clearInterval(countdownInterval)
+    }
+  }, [autoRefresh, refreshInterval, currentError])
+
+  // Initial data fetch effect - fetch data if not provided by server
+  useEffect(() => {
+    // Only fetch if we don't have initial data or if there was an error
+    if (!initialData || currentError) {
+      console.log('🎯 No initial data or error detected, fetching fresh data...')
+      handleRefresh()
+    }
+  }, []) // Run once on mount
+
+  // Format countdown for display
+  const formatCountdown = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
   const handleRefresh = async () => {
     setIsRefreshing(true)
     setCurrentError(null)
+    setLastRefresh(new Date())
     
     try {
       console.log('🔄 Refreshing dashboard data with filters:', filters)
@@ -151,16 +202,22 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
         setIsUsingMockData(false)
         setConnectionStatus('connected')
         console.log('✅ Dashboard refreshed successfully')
+        
+        // Reset countdown on successful refresh
+        if (autoRefresh) {
+          setCountdown(refreshInterval * 60)
+        }
       } else {
         console.warn('⚠️ Refresh failed, keeping current data:', result.error)
         setCurrentError(result.error || 'Failed to refresh data')
         setConnectionStatus('failed')
-        // Keep current data, don't fall back to mock
+        // Auto-refresh will pause due to error
       }
     } catch (err: any) {
       console.error('💥 Error during refresh:', err)
       setCurrentError(err.message || 'Failed to refresh data')
       setConnectionStatus('failed')
+      // Auto-refresh will pause due to error
     } finally {
       setIsRefreshing(false)
     }
@@ -180,7 +237,6 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
       if (result.success) {
         setConnectionStatus('connected')
         console.log('✅ Connection test successful')
-        // Automatically refresh data after successful connection test
         await handleRefresh()
       } else {
         setConnectionStatus('failed')
@@ -197,112 +253,173 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
   // Add consistent colors to data
   const statusDataWithColors = dashboardData.ticketsByStatus.map(item => ({
     ...item,
-    color: STATUS_COLORS[item.name] || DASHBOARD_COLORS.chart.neutral
+    color: STATUS_COLORS[item.name] || COLORS.chart.gray
   }))
 
   const priorityDataWithColors = dashboardData.ticketsByPriority.map(item => ({
     ...item,
-    color: PRIORITY_COLORS[item.name] || DASHBOARD_COLORS.chart.neutral
+    color: PRIORITY_COLORS[item.name] || COLORS.chart.gray
   }))
 
   const workloadDataWithColors = dashboardData.agentWorkload.map(item => ({
     ...item,
-    color: WORKLOAD_COLORS[item.name] || DASHBOARD_COLORS.chart.neutral
+    color: WORKLOAD_COLORS[item.name] || COLORS.chart.gray
   }))
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: DASHBOARD_COLORS.background }}>
-      {/* Header */}
-      <div className="border-b border-gray-200 bg-white">
-        <div className="container mx-auto px-6 py-6">
+    <div className="min-h-screen bg-background">
+      {/* Compact Header for TV - shadcn style */}
+      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900">Freshservice Dashboard</h1>
-              <p className="text-gray-600 mt-2">Monitor your support tickets and team performance</p>
-              
-              {/* Status indicator */}
-              <div className="flex items-center mt-3 space-x-4">
-                <div className="flex items-center space-x-2">
-                  <div className={`h-2 w-2 rounded-full ${
-                    connectionStatus === 'connected' ? 'bg-green-500' :
-                    connectionStatus === 'testing' ? 'bg-orange-500' :
-                    'bg-red-500'
-                  }`} />
-                  <span className="text-sm text-gray-600">
-                    {connectionStatus === 'connected' ? 'Connected to Freshservice' :
-                     connectionStatus === 'testing' ? 'Testing connection...' :
-                     'Connection issues'}
-                  </span>
+            <div className="flex items-center space-x-6">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">Pattern's IT Dashboard</h1>
+                <div className="flex items-center space-x-4 mt-1">
+                  <div className="flex items-center space-x-2">
+                    <div className={`h-2 w-2 rounded-full ${
+                      connectionStatus === 'connected' ? 'bg-green-500' :
+                      connectionStatus === 'testing' ? 'bg-orange-500' :
+                      'bg-red-500'
+                    }`} />
+                    <span className="text-xs text-muted-foreground">
+                      {connectionStatus === 'connected' ? 'Connected' :
+                       connectionStatus === 'testing' ? 'Testing...' :
+                       'Connection issues'}
+                    </span>
+                  </div>
+                  
+                  {lastRefresh && (
+                    <div className="flex items-center space-x-2">
+                      <Clock className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">
+                        Last: {lastRefresh.toLocaleTimeString()}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {isUsingMockData && (
+                    <div className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold border-transparent bg-secondary text-secondary-foreground">
+                      Sample data
+                    </div>
+                  )}
+                  
+                  {autoRefresh && (
+                    <div className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold border-green-200 bg-green-50 text-green-700">
+                      Auto-refresh ON
+                    </div>
+                  )}
                 </div>
-                
-                {isUsingMockData && (
-                  <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-full border border-orange-200">
-                    Using sample data
-                  </span>
-                )}
               </div>
             </div>
             
-            <div className="flex space-x-3">
-              <Link href="/about">
-                <Button 
-                  variant="outline" 
-                  size="lg" 
-                  className="flex items-center border-gray-300 hover:border-gray-400"
+            {/* Compact Filter Controls in Header */}
+            <div className="flex items-center space-x-3">
+              {/* Agent Filter */}
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-medium text-muted-foreground">Agent:</span>
+                <select 
+                  value={filters.agentId}
+                  onChange={(e) => setFilters({...filters, agentId: e.target.value as any})}
+                  className="h-8 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 >
-                  <Info className="w-4 h-4 mr-2" />
-                  About Metrics
-                </Button>
-              </Link>
-              
-              {connectionStatus === 'failed' && (
-                <Button 
-                  onClick={handleTestConnection}
-                  disabled={false}
-                  variant="outline"
-                  size="lg"
-                  className="border-orange-300 text-orange-700 hover:bg-orange-50"
+                  <option value="all">All Agents</option>
+                </select>
+              </div>
+
+              {/* Time Range Filter */}
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-medium text-muted-foreground">Period:</span>
+                <select 
+                  value={filters.timeRange}
+                  onChange={(e) => setFilters({...filters, timeRange: e.target.value as any})}
+                  className="h-8 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 >
-                  Test Connection
-                </Button>
-              )}
-              
-              {connectionStatus === 'testing' && (
+                  <option value="today">Today</option>
+                  <option value="week">This Week</option>
+                  <option value="month">This Month</option>
+                  <option value="quarter">This Quarter</option>
+                </select>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center space-x-2">
+                {/* Auto-refresh controls */}
+                <div className="flex items-center space-x-2 px-3 py-1 rounded-md border border-input bg-background">
+                  <Button
+                    onClick={() => setAutoRefresh(!autoRefresh)}
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                  >
+                    {autoRefresh ? (
+                      <Pause className="h-3 w-3 text-green-600" />
+                    ) : (
+                      <Play className="h-3 w-3 text-muted-foreground" />
+                    )}
+                  </Button>
+                  
+                  <select
+                    value={refreshInterval}
+                    onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                    disabled={autoRefresh}
+                    className="h-6 border-0 bg-transparent text-xs focus:outline-none text-muted-foreground"
+                  >
+                    <option value={1}>1m</option>
+                    <option value={2}>2m</option>
+                    <option value={5}>5m</option>
+                    <option value={10}>10m</option>
+                    <option value={15}>15m</option>
+                  </select>
+                  
+                  {autoRefresh && !currentError && (
+                    <span className="text-xs text-muted-foreground min-w-[35px]">
+                      {formatCountdown(countdown)}
+                    </span>
+                  )}
+                  
+                  {autoRefresh && (
+                    <div className="w-1 h-1 bg-green-500 rounded-full animate-pulse" />
+                  )}
+                </div>
+
+                {connectionStatus === 'failed' && (
+                  <Button 
+                    onClick={handleTestConnection}
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                  >
+                    Test Connection
+                  </Button>
+                )}
+                
                 <Button 
-                  disabled={true}
-                  variant="outline"
-                  size="lg"
-                  className="border-gray-300"
+                  onClick={handleApplyFilters}
+                  disabled={isRefreshing}
+                  size="sm"
+                  className="h-8"
                 >
-                  Testing...
+                  <RotateCcw className={`mr-1 h-3 w-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  {isRefreshing ? 'Refreshing...' : 'Refresh'}
                 </Button>
-              )}
-              
-              <Button 
-                onClick={handleRefresh}
-                disabled={isRefreshing}
-                size="lg"
-                style={{ backgroundColor: DASHBOARD_COLORS.primary }}
-                className="text-white hover:opacity-90"
-              >
-                {isRefreshing ? 'Refreshing...' : 'Refresh Data'}
-              </Button>
+              </div>
             </div>
           </div>
 
           {/* Error display */}
           {currentError && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="mt-3 rounded-lg border border-destructive/50 bg-destructive/10 p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="text-sm font-medium text-red-800">API Error</h4>
-                  <p className="text-sm text-red-700 mt-1">{currentError}</p>
+                  <h4 className="text-sm font-medium text-destructive">API Error</h4>
+                  <p className="text-sm text-destructive/80 mt-1">{currentError}</p>
                 </div>
                 <Button
                   onClick={() => setCurrentError(null)}
                   variant="ghost"
                   size="sm"
-                  className="text-red-600 hover:text-red-800"
+                  className="text-destructive hover:text-destructive/80"
                 >
                   ✕
                 </Button>
@@ -312,104 +429,83 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="container mx-auto px-6 py-8">
-        {/* Filter Bar */}
-        <FilterBar
-          filters={filters}
-          onFiltersChange={setFilters}
-          onApplyFilters={handleApplyFilters}
-          isLoading={isRefreshing}
-        />
-
-        {/* Enhanced Overview Cards with consistent colors */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-6 mb-8">
-          <Card className="border-gray-200 shadow-sm">
+      {/* Main Content - Optimized for TV */}
+      <div className="container mx-auto px-6 py-6">
+        {/* Stats Cards - More Compact for TV */}
+        <div className="grid gap-3 md:grid-cols-4 lg:grid-cols-6 mb-6">
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-700">Total Tickets</CardTitle>
-              <div className="text-gray-400">📋</div>
+              <CardTitle className="text-sm font-medium">Open Tickets</CardTitle>
+              <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
-                {formatNumber(dashboardData.ticketsByStatus.reduce((sum, item) => sum + item.value, 0))}
-              </div>
-              <p className="text-xs text-gray-600 mt-1">In selected period</p>
+              <div className="text-2xl font-bold">{formatNumber(dashboardData.stats.openTickets)}</div>
+              <p className="text-xs text-muted-foreground">Currently open</p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Resolved Today</CardTitle>
+              <CheckCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatNumber(dashboardData.stats.resolvedToday)}</div>
+              <p className="text-xs text-muted-foreground">Closed today</p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">SLA Breaches</CardTitle>
+              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-destructive">{formatNumber(dashboardData.stats.slaBreaches)}</div>
+              <p className="text-xs text-muted-foreground">Past due</p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Unassigned</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-orange-600">{formatNumber(dashboardData.stats.unassignedTickets)}</div>
+              <p className="text-xs text-muted-foreground">Need assignment</p>
             </CardContent>
           </Card>
 
-          <Card className="border-gray-200 shadow-sm">
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-700">Open Tickets</CardTitle>
-              <div className="text-gray-400">🔵</div>
+              <CardTitle className="text-sm font-medium">Avg Response</CardTitle>
+              <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.chart.primary }}>
-                {formatNumber(dashboardData.stats.openTickets)}
-              </div>
-              <p className="text-xs text-gray-600 mt-1">Currently open</p>
+              <div className="text-2xl font-bold">{dashboardData.stats.avgResponseTime}</div>
+              <p className="text-xs text-muted-foreground">Response time</p>
             </CardContent>
           </Card>
-
-          <Card className="border-gray-200 shadow-sm">
+          
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-700">SLA Breaches</CardTitle>
-              <div className="text-gray-400">⚠️</div>
+              <CardTitle className="text-sm font-medium">Active Agents</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.danger }}>
-                {formatNumber(dashboardData.stats.slaBreaches)}
-              </div>
-              <p className="text-xs text-gray-600 mt-1">Past due date</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-700">Unassigned</CardTitle>
-              <div className="text-gray-400">👤</div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.warning }}>
-                {formatNumber(dashboardData.stats.unassignedTickets)}
-              </div>
-              <p className="text-xs text-gray-600 mt-1">Need assignment</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-700">Resolved Today</CardTitle>
-              <div className="text-gray-400">✅</div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.success }}>
-                {formatNumber(dashboardData.stats.resolvedToday)}
-              </div>
-              <p className="text-xs text-gray-600 mt-1">Closed today</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-700">Active Agents</CardTitle>
-              <div className="text-gray-400">👥</div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.info }}>
-                {formatNumber(dashboardData.stats.totalAgents)}
-              </div>
-              <p className="text-xs text-gray-600 mt-1">Available agents</p>
+              <div className="text-2xl font-bold">{formatNumber(dashboardData.stats.totalAgents)}</div>
+              <p className="text-xs text-muted-foreground">Available</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Enhanced Charts Grid with consistent design */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* Charts Grid - Optimized Layout for TV */}
+        <div className="grid gap-4 lg:grid-cols-3 mb-6">
           {/* Tickets by Status */}
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-gray-900">Tickets by Status</CardTitle>
-              <CardDescription className="text-gray-600">Current distribution</CardDescription>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Tickets by Status</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={250}>
@@ -434,10 +530,9 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
           </Card>
 
           {/* Tickets by Priority */}
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-gray-900">Tickets by Priority</CardTitle>
-              <CardDescription className="text-gray-600">Priority distribution</CardDescription>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Tickets by Priority</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={250}>
@@ -461,11 +556,10 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
             </CardContent>
           </Card>
 
-          {/* Agent Workload Distribution */}
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-gray-900">Agent Workload</CardTitle>
-              <CardDescription className="text-gray-600">Team capacity overview</CardDescription>
+          {/* Agent Workload */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Agent Workload</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={250}>
@@ -490,127 +584,105 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
           </Card>
         </div>
 
-        {/* Category and Resolution Analysis Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Tickets by Category - Single color for consistency */}
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-gray-900">Top Categories</CardTitle>
-              <CardDescription className="text-gray-600">Most common issue categories</CardDescription>
+        {/* Bottom Row - Line Charts */}
+        <div className="grid gap-4 lg:grid-cols-2 mb-6">
+          {/* Weekly Trend */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Weekly Ticket Trend</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={dashboardData.ticketsByCategory} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={dashboardData.ticketsTrend}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis 
+                    dataKey="name" 
+                    className="text-xs fill-muted-foreground"
+                  />
+                  <YAxis className="text-xs fill-muted-foreground" />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--background))', 
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '6px',
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                    }}
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="value" 
+                    stroke={COLORS.chart.blue} 
+                    strokeWidth={3}
+                    dot={{ fill: COLORS.chart.blue, strokeWidth: 2, r: 5 }}
+                    activeDot={{ r: 7, stroke: COLORS.chart.blue, strokeWidth: 2 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Top Categories */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Top Categories</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={dashboardData.ticketsByCategory}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis 
                     dataKey="name" 
                     angle={-45} 
                     textAnchor="end" 
                     height={80} 
-                    tick={{ fontSize: 12, fill: '#6B7280' }}
+                    className="text-xs fill-muted-foreground"
                   />
-                  <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} />
+                  <YAxis className="text-xs fill-muted-foreground" />
                   <Tooltip 
                     contentStyle={{ 
-                      backgroundColor: 'white', 
-                      border: '1px solid #e5e7eb',
+                      backgroundColor: 'hsl(var(--background))', 
+                      border: '1px solid hsl(var(--border))',
                       borderRadius: '6px',
-                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                     }}
                   />
-                  <Bar dataKey="value" fill={DASHBOARD_COLORS.chart.primary} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          {/* Resolution Times - Single color for consistency */}
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-gray-900">Resolution Time Analysis</CardTitle>
-              <CardDescription className="text-gray-600">How quickly tickets are resolved</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={dashboardData.resolutionTimes} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis 
-                    dataKey="name" 
-                    angle={-45} 
-                    textAnchor="end" 
-                    height={80}
-                    tick={{ fontSize: 12, fill: '#6B7280' }}
+                  <Line 
+                    type="monotone" 
+                    dataKey="value" 
+                    stroke={COLORS.chart.blue} 
+                    strokeWidth={3}
+                    dot={{ fill: COLORS.chart.blue, strokeWidth: 2, r: 4 }}
+                    activeDot={{ r: 6, stroke: COLORS.chart.blue, strokeWidth: 2 }}
                   />
-                  <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'white', 
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '6px',
-                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
-                    }}
-                  />
-                  <Bar dataKey="value" fill={DASHBOARD_COLORS.chart.secondary} radius={[4, 4, 0, 0]} />
-                </BarChart>
+                </LineChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
         </div>
 
-        {/* Weekly Trend Chart - Single color, better design */}
-        <Card className="mb-8 border-gray-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-gray-900">Weekly Ticket Trend</CardTitle>
-            <CardDescription className="text-gray-600">Tickets created in the last 7 days</CardDescription>
+        {/* Agent Performance - Compact for TV */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Agent Performance Overview</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={dashboardData.ticketsTrend} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey="name" 
-                  tick={{ fontSize: 12, fill: '#6B7280' }}
-                />
-                <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'white', 
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '6px',
-                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
-                  }}
-                />
-                <Bar dataKey="value" fill={DASHBOARD_COLORS.chart.primary} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Enhanced Agent Performance with better layout */}
-        <Card className="border-gray-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-gray-900">Agent Performance Overview</CardTitle>
-            <CardDescription className="text-gray-600">Detailed agent metrics and workload analysis</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-8">
-              {/* Performance Chart with better margins and colors */}
-              <ResponsiveContainer width="100%" height={400}>
-                <BarChart 
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Performance Chart */}
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart 
                   data={dashboardData.agentPerformance}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 140 }}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 100 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis 
                     dataKey="name" 
                     angle={-45} 
                     textAnchor="end" 
-                    height={140}
+                    height={100}
                     interval={0}
-                    fontSize={11}
-                    tick={{ fontSize: 11, fill: '#6B7280' }}
+                    className="text-xs fill-muted-foreground"
                   />
-                  <YAxis tick={{ fontSize: 12, fill: '#6B7280' }} />
+                  <YAxis className="text-xs fill-muted-foreground" />
                   <Tooltip 
                     formatter={(value, name) => [
                       name === 'tickets' ? formatNumber(value as number) : `${value}%`,
@@ -618,94 +690,74 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                     ]}
                     labelFormatter={(label) => `Agent: ${label}`}
                     contentStyle={{ 
-                      backgroundColor: 'white', 
-                      border: '1px solid #e5e7eb',
+                      backgroundColor: 'hsl(var(--background))', 
+                      border: '1px solid hsl(var(--border))',
                       borderRadius: '6px',
-                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                     }}
                   />
-                  <Bar dataKey="tickets" fill={DASHBOARD_COLORS.chart.primary} name="tickets" radius={[2, 2, 0, 0]} />
-                  <Bar dataKey="resolution" fill={DASHBOARD_COLORS.chart.secondary} name="resolution" radius={[2, 2, 0, 0]} />
-                </BarChart>
+                  <Line 
+                    type="monotone" 
+                    dataKey="tickets" 
+                    stroke={COLORS.chart.blue} 
+                    strokeWidth={3}
+                    name="tickets"
+                    dot={{ fill: COLORS.chart.blue, strokeWidth: 2, r: 4 }}
+                    activeDot={{ r: 6, stroke: COLORS.chart.blue, strokeWidth: 2 }}
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="resolution" 
+                    stroke={COLORS.chart.green} 
+                    strokeWidth={3}
+                    name="resolution"
+                    dot={{ fill: COLORS.chart.green, strokeWidth: 2, r: 4 }}
+                    activeDot={{ r: 6, stroke: COLORS.chart.green, strokeWidth: 2 }}
+                  />
+                </LineChart>
               </ResponsiveContainer>
 
-              {/* Agent Details Table with improved spacing */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b-2 border-gray-100" style={{ backgroundColor: DASHBOARD_COLORS.neutralLight }}>
-                      <th className="text-left p-4 font-semibold text-gray-700 min-w-[160px]">Agent</th>
-                      <th className="text-right p-4 font-semibold text-gray-700 min-w-[80px]">Tickets</th>
-                      <th className="text-right p-4 font-semibold text-gray-700 min-w-[100px]">Resolution Rate</th>
-                      <th className="text-right p-4 font-semibold text-gray-700 min-w-[110px]">Avg Response</th>
-                      <th className="text-center p-4 font-semibold text-gray-700 min-w-[100px]">Workload</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dashboardData.agentPerformance.map((agent, index) => (
-                      <tr key={agent.id} className="border-b border-gray-50 hover:bg-gray-25 transition-colors">
-                        <td className="p-4 font-medium text-gray-900">
-                          <div className="truncate max-w-[150px]" title={agent.name}>
-                            {agent.name}
-                          </div>
-                        </td>
-                        <td className="text-right p-4 text-gray-700">
-                          <span className="font-medium">{formatNumber(agent.tickets)}</span>
-                        </td>
-                        <td className="text-right p-4">
-                          <span className={`font-semibold ${
-                            agent.resolution >= 90 ? 'text-green-600' :
-                            agent.resolution >= 80 ? 'text-blue-600' :
-                            agent.resolution >= 70 ? 'text-orange-600' :
-                            'text-red-600'
-                          }`}>
-                            {agent.resolution}%
-                          </span>
-                        </td>
-                        <td className="text-right p-4 text-gray-700 font-medium">
-                          {agent.avgResponseTime}
-                        </td>
-                        <td className="text-center p-4">
-                          <span 
-                            className="px-3 py-1 rounded-full text-xs font-medium text-white"
-                            style={{ 
-                              backgroundColor: WORKLOAD_COLORS[agent.workload] || DASHBOARD_COLORS.neutral 
-                            }}
-                          >
-                            {agent.workload}
-                          </span>
-                        </td>
+              {/* Agent Summary Table - Compact */}
+              <div className="rounded-md border">
+                <div className="relative w-full overflow-auto max-h-[300px]">
+                  <table className="w-full caption-bottom text-sm">
+                    <thead className="[&_tr]:border-b sticky top-0 bg-background">
+                      <tr className="border-b transition-colors hover:bg-muted/50">
+                        <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Agent</th>
+                        <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Tickets</th>
+                        <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Rate</th>
+                        <th className="h-10 px-3 text-left align-middle font-medium text-muted-foreground">Workload</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Summary Stats with consistent colors */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-6 border-t border-gray-100">
-                <div className="text-center">
-                  <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.chart.primary }}>
-                    {dashboardData.agentPerformance.length}
-                  </div>
-                  <div className="text-sm text-gray-600 mt-1">Active Agents</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.success }}>
-                    {Math.round(dashboardData.agentPerformance.reduce((sum, agent) => sum + agent.resolution, 0) / dashboardData.agentPerformance.length)}%
-                  </div>
-                  <div className="text-sm text-gray-600 mt-1">Avg Resolution Rate</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.info }}>
-                    {formatNumber(dashboardData.agentPerformance.reduce((sum, agent) => sum + agent.tickets, 0))}
-                  </div>
-                  <div className="text-sm text-gray-600 mt-1">Total Tickets</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold" style={{ color: DASHBOARD_COLORS.danger }}>
-                    {dashboardData.agentWorkload.find(w => w.name === 'Overloaded')?.value || 0}
-                  </div>
-                  <div className="text-sm text-gray-600 mt-1">Overloaded Agents</div>
+                    </thead>
+                    <tbody className="[&_tr:last-child]:border-0">
+                      {dashboardData.agentPerformance.map((agent) => (
+                        <tr key={agent.id} className="border-b transition-colors hover:bg-muted/50">
+                          <td className="p-3 align-middle font-medium text-sm">{agent.name}</td>
+                          <td className="p-3 align-middle text-sm">{formatNumber(agent.tickets)}</td>
+                          <td className="p-3 align-middle text-sm">
+                            <span className={`font-semibold ${
+                              agent.resolution >= 90 ? 'text-green-600' :
+                              agent.resolution >= 80 ? 'text-blue-600' :
+                              agent.resolution >= 70 ? 'text-orange-600' :
+                              'text-red-600'
+                            }`}>
+                              {agent.resolution}%
+                            </span>
+                          </td>
+                          <td className="p-3 align-middle">
+                            <div className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                              agent.workload === 'Light' ? 'bg-gray-100 text-gray-700' :
+                              agent.workload === 'Moderate' ? 'bg-gray-200 text-gray-800' :
+                              agent.workload === 'Heavy' ? 'bg-gray-400 text-white' :
+                              'bg-gray-700 text-white'
+                            }`}>
+                              {agent.workload}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
