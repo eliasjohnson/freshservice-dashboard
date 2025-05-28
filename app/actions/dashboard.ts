@@ -90,7 +90,10 @@ function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
   const uniqueWorkspaces = [...new Set(tickets.map(t => t.workspace_id).filter(id => id !== undefined))] as number[];
   console.log(`🏢 Found ${uniqueWorkspaces.length} unique workspaces: [${uniqueWorkspaces.join(', ')}]`);
   
-  if (uniqueWorkspaces.length === 1) {
+  if (uniqueWorkspaces.length === 0) {
+    // No workspace information available, use all tickets
+    console.log(`🏢 No workspace information found, using all tickets`);
+  } else if (uniqueWorkspaces.length === 1) {
     // If only one workspace, use all tickets
     console.log(`🏢 Only one workspace found (${uniqueWorkspaces[0]}), using all tickets`);
   } else {
@@ -101,9 +104,10 @@ function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
         targetWorkspace = 1;
         console.log(`🏢 Workspace 2 not found, using workspace 1`);
       } else {
-        // Use workspace with most tickets
+        // Use workspace with most tickets - with proper initial value
         targetWorkspace = uniqueWorkspaces.reduce((max, current) => 
-          workspaceCounts[current] > workspaceCounts[max] ? current : max
+          workspaceCounts[current] > workspaceCounts[max] ? current : max,
+          uniqueWorkspaces[0] // Use first workspace as initial value
         );
         console.log(`🏢 Using workspace ${targetWorkspace} (has most tickets: ${workspaceCounts[targetWorkspace]})`);
       }
@@ -324,7 +328,30 @@ function filterITAgents(agents: Agent[], tickets: Ticket[]): Agent[] {
   const uniqueWorkspaces = [...new Set(tickets.map(t => t.workspace_id).filter(id => id !== undefined))] as number[];
   let targetWorkspace: number;
   
-  if (uniqueWorkspaces.length === 1) {
+  if (uniqueWorkspaces.length === 0) {
+    // No workspace information available, use all tickets
+    console.log(`🎯 No workspace information found in filterITAgents, using all tickets`);
+    const responderIds = new Set(
+      tickets
+        .map(ticket => ticket.responder_id)
+        .filter(id => id !== null && id !== undefined) as number[]
+    );
+
+    console.log(`🎯 Found ${responderIds.size} unique responders across all tickets`);
+
+    // Filter agents to only those who handle tickets
+    const activeAgents = agents.filter(agent => {
+      if (!agent.active) return false;
+      const isResponder = responderIds.has(agent.id);
+      if (isResponder) {
+        console.log(`   ✅ Active Agent: ${agent.first_name} ${agent.last_name} - ${agent.job_title || 'No title'}`);
+      }
+      return isResponder;
+    });
+    
+    console.log(`🎯 Filtered to ${activeAgents.length} active team members from ${agents.length} total agents (no workspace filtering)`);
+    return activeAgents;
+  } else if (uniqueWorkspaces.length === 1) {
     targetWorkspace = uniqueWorkspaces[0];
   } else {
     // Use same logic as filterTickets
@@ -340,7 +367,8 @@ function filterITAgents(agents: Agent[], tickets: Ticket[]): Agent[] {
           }
         });
         targetWorkspace = uniqueWorkspaces.reduce((max, current) => 
-          workspaceCounts[current] > workspaceCounts[max] ? current : max
+          workspaceCounts[current] > workspaceCounts[max] ? current : max,
+          uniqueWorkspaces[0] // Use first workspace as initial value
         );
       }
     }
@@ -826,15 +854,23 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
 }
 
 /**
- * Server action to get available agents for filtering
+ * Server action to get available agents for filtering - ONLY IT SUPPORT AGENTS
  */
 export async function fetchAgentList(): Promise<{ success: boolean; agents?: Array<{ id: number; name: string; department?: string }>; error?: string }> {
   try {
-    const agentsResponse = await freshserviceApi.getAgents(1, 100);
-    const agents = agentsResponse.agents || [];
+    // Fetch both agents and tickets to filter to only IT support agents
+    const [agentsResponse, ticketsResponse] = await Promise.all([
+      freshserviceApi.getAgents(1, 100),
+      freshserviceApi.getTickets(1, 100) // Get first page of tickets to determine IT workspace and agents
+    ]);
     
-    const agentList = agents
-      .filter(agent => agent.active)
+    const agents = agentsResponse.agents || [];
+    const tickets = ticketsResponse.tickets || [];
+    
+    // Use the same filtering logic as the dashboard to get only IT support agents
+    const itAgents = filterITAgents(agents, tickets);
+    
+    const agentList = itAgents
       .map(agent => ({
         id: agent.id,
         name: agent.name || `${agent.first_name || ''} ${agent.last_name || ''}`.trim(),
@@ -842,6 +878,8 @@ export async function fetchAgentList(): Promise<{ success: boolean; agents?: Arr
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
+    console.log(`✅ Filtered to ${agentList.length} IT support agents from ${agents.length} total agents`);
+    
     return { success: true, agents: agentList };
   } catch (error: any) {
     console.error('Error fetching agent list:', error);

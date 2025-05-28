@@ -137,6 +137,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
   })
   const [availableAgents, setAvailableAgents] = useState<Array<{ id: number; name: string; department?: string }>>([])
   const [agentsLoading, setAgentsLoading] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0) // Key to force chart re-animation
 
   // Auto-refresh functionality for TV displays
   const [autoRefresh, setAutoRefresh] = useState(false)
@@ -243,6 +244,9 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
         if (autoRefresh) {
           setCountdown(refreshInterval * 60)
         }
+        
+        // Increment refresh key to force chart re-animation
+        setRefreshKey(prevKey => prevKey + 1)
       } else {
         console.warn('⚠️ Refresh failed, keeping current data:', result.error)
         setCurrentError(result.error || 'Failed to refresh data')
@@ -475,7 +479,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
       </div>
 
       {/* Main Content - Optimized for TV */}
-      <div className="container mx-auto px-6 py-6">
+      <div className={`container mx-auto px-6 py-6 transition-opacity duration-300 ${isRefreshing ? 'opacity-75' : 'opacity-100'}`}>
         {/* Stats Cards - More Compact for TV */}
         <div className="grid gap-3 md:grid-cols-4 lg:grid-cols-6 mb-6">
           <Card>
@@ -553,7 +557,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
               <CardTitle className="text-lg">Tickets by Status</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={250}>
+              <ResponsiveContainer key={`status-${refreshKey}`} width="100%" height={250}>
                 <PieChart>
                   <Pie
                     data={statusDataWithColors}
@@ -580,7 +584,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
               <CardTitle className="text-lg">Tickets by Priority</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={250}>
+              <ResponsiveContainer key={`priority-${refreshKey}`} width="100%" height={250}>
                 <PieChart>
                   <Pie
                     data={priorityDataWithColors}
@@ -607,7 +611,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
               <CardTitle className="text-lg">Agent Workload</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={250}>
+              <ResponsiveContainer key={`workload-${refreshKey}`} width="100%" height={250}>
                 <PieChart>
                   <Pie
                     data={workloadDataWithColors}
@@ -637,7 +641,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
               <CardTitle className="text-lg">Weekly Ticket Trend</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={250}>
+              <ResponsiveContainer key={`trend-${refreshKey}`} width="100%" height={250}>
                 <LineChart data={dashboardData.ticketsTrend}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis 
@@ -672,7 +676,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
               <CardTitle className="text-lg">Top Categories</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={250}>
+              <ResponsiveContainer key={`categories-${refreshKey}`} width="100%" height={250}>
                 <LineChart data={dashboardData.ticketsByCategory}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis 
@@ -713,7 +717,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
           <CardContent>
             <div className="grid gap-6 lg:grid-cols-2">
               {/* Performance Chart */}
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer key={`performance-${refreshKey}`} width="100%" height={300}>
                 <LineChart 
                   data={dashboardData.agentPerformance}
                   margin={{ top: 20, right: 30, left: 20, bottom: 100 }}
