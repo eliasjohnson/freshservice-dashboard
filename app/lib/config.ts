@@ -6,7 +6,7 @@
 export const serverConfig = {
   freshservice: {
     domain: process.env.FRESHSERVICE_DOMAIN || 'patterntickets.freshservice.com',
-    apiKey: process.env.FRESHSERVICE_API_KEY || '9CRirBinRIRpTonm2X',
+    apiKey: process.env.FRESHSERVICE_API_KEY || '',
     get baseUrl() {
       const domainWithoutProtocol = this.domain.replace(/^https?:\/\//, '');
       return `https://${domainWithoutProtocol}/api/v2`;
