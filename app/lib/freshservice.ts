@@ -470,6 +470,43 @@ export class FreshserviceApiClient {
       rateLimit: rateLimitTracker.getStats()
     };
   }
+
+  /**
+   * Get ticket conversations with rate limiting
+   * This gives us access to actual first response times
+   */
+  async getTicketConversations(ticketId: number): Promise<any> {
+    const cacheKey = `conversations_${ticketId}`;
+    
+    // Check cache first
+    const cachedData = apiCache.get<any>(cacheKey);
+    if (cachedData) {
+      console.log(`📦 Cache HIT: conversations for ticket ${ticketId}`);
+      return cachedData;
+    }
+    
+    // Check rate limits
+    if (!rateLimitTracker.canMakeRequest('other')) {
+      const waitTime = rateLimitTracker.getWaitTime();
+      const waitSeconds = Math.ceil(waitTime / 1000);
+      throw new Error(`Rate limit exceeded. Please wait ${waitSeconds} seconds before making more requests.`);
+    }
+    
+    console.log(`🌐 Cache MISS: fetching conversations for ticket ${ticketId}...`);
+    
+    try {
+      const response: AxiosResponse<any> = await this.axiosInstance.get(`/tickets/${ticketId}/conversations`);
+      
+      // Cache the response
+      apiCache.set(cacheKey, response.data);
+      console.log(`💾 Cached conversations for ticket ${ticketId}`);
+      
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching conversations for ticket ${ticketId}:`, error);
+      throw error;
+    }
+  }
 }
 
 // Export singleton instance

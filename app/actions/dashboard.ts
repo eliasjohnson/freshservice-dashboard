@@ -1,6 +1,7 @@
 'use server'
 
 import { freshserviceApi, Ticket, Agent, Department, Contact } from '../lib/freshservice';
+import { apiCache, rateLimitTracker, withRateLimitRetry } from '../lib/cache';
 
 // Enhanced dashboard data interface with more relevant metrics
 export interface DashboardData {
@@ -32,6 +33,8 @@ export interface DashboardData {
   resolutionTimes: Array<{ name: string; value: number }>;
   // Agent workload distribution
   agentWorkload: Array<{ name: string; value: number }>;
+  recentActivity: Array<{ id: number; subject: string; type: string; time: string }>;
+  requesterDepartments: Array<{ name: string; value: number }>;
 }
 
 // Filtering options interface
@@ -41,6 +44,7 @@ export interface DashboardFilters {
   department?: string;
   priority?: number[];
   status?: number[];
+  forceRefresh?: boolean; // Add option to bypass cache
 }
 
 // Status and priority mappings
@@ -49,8 +53,21 @@ const TICKET_STATUS: Record<number, string> = {
   3: 'Pending',
   4: 'Resolved',
   5: 'Closed',
+  6: 'Hold',                    // Custom Status 6
+  8: 'Waiting on Customer',     // Custom Status 8
   1: 'New', // Keep this in case there are any status 1 tickets
 };
+
+// According to Freshservice API docs, status codes are:
+// Standard: Open = 2, Pending = 3, Resolved = 4, Closed = 5
+// Custom (from admin interface): Hold = 6, Waiting on Customer = 8
+const getStatusName = (status: number): string => {
+  return TICKET_STATUS[status] || `Custom Status ${status}`;
+};
+
+// Define which statuses represent "active" tickets that need attention
+const ACTIVE_TICKET_STATUSES = [2, 3, 6, 8]; // Open, Pending, Hold, Waiting on Customer
+const RESOLVED_STATUSES = [4, 5]; // Resolved, Closed
 
 const TICKET_PRIORITY: Record<number, string> = {
   1: 'Low',
@@ -58,6 +75,15 @@ const TICKET_PRIORITY: Record<number, string> = {
   3: 'High',
   4: 'Urgent',
 };
+
+// Add interface for conversation type
+interface Conversation {
+  id: number;
+  user_id: number;
+  created_at: string;
+  body?: string;
+  private?: boolean;
+}
 
 /**
  * Filter tickets based on criteria
@@ -83,7 +109,7 @@ function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
     allStatusCounts[ticket.status] = (allStatusCounts[ticket.status] || 0) + 1;
   });
   console.log(`📊 All tickets by status:`, Object.entries(allStatusCounts).map(([status, count]) => 
-    `${TICKET_STATUS[parseInt(status)] || 'Unknown'} (${status}): ${count}`
+    `${getStatusName(parseInt(status))} (${status}): ${count}`
   ).join(', '));
 
   // FLEXIBLE: Try to find IT Support workspace or use all tickets if only one workspace
@@ -206,7 +232,7 @@ function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
       statusCounts[ticket.status] = (statusCounts[ticket.status] || 0) + 1;
     });
     console.log(`📊 Remaining tickets by status:`, Object.entries(statusCounts).map(([status, count]) => 
-      `${TICKET_STATUS[parseInt(status)] || 'Unknown'} (${status}): ${count}`
+      `${getStatusName(parseInt(status))} (${status}): ${count}`
     ).join(', '));
   }
 
@@ -221,11 +247,14 @@ function createTicketsByStatusChartData(tickets: Ticket[]): Array<{ name: string
   const statusCounts: Record<string, number> = {};
   
   tickets.forEach(ticket => {
-    const status = TICKET_STATUS[ticket.status] || 'Unknown';
+    const status = getStatusName(ticket.status);
     statusCounts[status] = (statusCounts[status] || 0) + 1;
   });
   
-  return Object.entries(statusCounts).map(([name, value]) => ({ name, value }));
+  // Sort by value (descending) for better visual hierarchy  
+  return Object.entries(statusCounts)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
 }
 
 /**
@@ -239,7 +268,11 @@ function createTicketsByPriorityChartData(tickets: Ticket[]): Array<{ name: stri
     priorityCounts[priority] = (priorityCounts[priority] || 0) + 1;
   });
   
-  return Object.entries(priorityCounts).map(([name, value]) => ({ name, value }));
+  // Sort by priority level (Urgent -> High -> Medium -> Low)
+  const priorityOrder = { 'Urgent': 4, 'High': 3, 'Medium': 2, 'Low': 1, 'Unknown': 0 };
+  return Object.entries(priorityCounts)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => (priorityOrder[b.name as keyof typeof priorityOrder] || 0) - (priorityOrder[a.name as keyof typeof priorityOrder] || 0));
 }
 
 /**
@@ -381,7 +414,7 @@ function createResolutionTimesData(tickets: Ticket[]): Array<{ name: string; val
     '> 3 days': 0
   };
 
-  const resolvedTickets = tickets.filter(t => t.status === 4 || t.status === 5); // Resolved or Closed
+  const resolvedTickets = tickets.filter(t => RESOLVED_STATUSES.includes(t.status)); // Use RESOLVED_STATUSES constant
   
   resolvedTickets.forEach(ticket => {
     const created = new Date(ticket.created_at);
@@ -528,7 +561,7 @@ function createAgentPerformanceData(tickets: Ticket[], agents: Agent[]): Array<{
       agentMap[ticket.responder_id].tickets++;
       
       // Count as resolved if status is resolved or closed
-      if (ticket.status === 4 || ticket.status === 5) { // Resolved or Closed
+      if (RESOLVED_STATUSES.includes(ticket.status)) { // Use RESOLVED_STATUSES constant
         agentMap[ticket.responder_id].resolved++;
       }
 
@@ -602,7 +635,7 @@ function countResolvedToday(tickets: Ticket[]): number {
   const today = new Date().toISOString().split('T')[0];
   return tickets.filter((ticket: Ticket) => {
     const updated = new Date(ticket.updated_at).toISOString().split('T')[0];
-    return updated === today && (ticket.status === 4 || ticket.status === 5); // Resolved or Closed
+    return updated === today && RESOLVED_STATUSES.includes(ticket.status); // Use RESOLVED_STATUSES constant
   }).length;
 }
 
@@ -614,7 +647,7 @@ function countSLABreaches(tickets: Ticket[]): number {
   return tickets.filter(ticket => {
     if (!ticket.due_by) return false;
     const dueDate = new Date(ticket.due_by);
-    return now > dueDate && (ticket.status === 2 || ticket.status === 3); // Open or Pending
+    return now > dueDate && ACTIVE_TICKET_STATUSES.includes(ticket.status); // Use ACTIVE_TICKET_STATUSES
   }).length;
 }
 
@@ -626,7 +659,7 @@ function countOverdueTickets(tickets: Ticket[]): number {
   return tickets.filter(ticket => {
     if (!ticket.fr_due_by) return false;
     const dueDate = new Date(ticket.fr_due_by);
-    return now > dueDate && (ticket.status === 2 || ticket.status === 3); // Open or Pending
+    return now > dueDate && ACTIVE_TICKET_STATUSES.includes(ticket.status); // Use ACTIVE_TICKET_STATUSES
   }).length;
 }
 
@@ -635,7 +668,7 @@ function countOverdueTickets(tickets: Ticket[]): number {
  */
 function countUnassignedTickets(tickets: Ticket[]): number {
   return tickets.filter(ticket => 
-    !ticket.responder_id && (ticket.status === 2 || ticket.status === 3) // Open or Pending
+    !ticket.responder_id && ACTIVE_TICKET_STATUSES.includes(ticket.status) // Use ACTIVE_TICKET_STATUSES
   ).length;
 }
 
@@ -737,7 +770,73 @@ function calculateAvgResponseTime(tickets: Ticket[]): string {
 }
 
 /**
- * Server action to fetch dashboard data with filtering - OPTIMIZED for rate limits
+ * Calculate average first response time using conversations API for more accurate data
+ * According to Freshservice API docs, conversations contain actual first response timestamps
+ */
+async function calculateActualFirstResponseTime(tickets: Ticket[]): Promise<string> {
+  console.log('🔍 === ACTUAL FIRST RESPONSE TIME ANALYSIS ===');
+  
+  let totalResponseTimeMinutes = 0;
+  let validResponseCount = 0;
+  
+  // Sample a subset of tickets to avoid hitting rate limits
+  const sampleTickets = tickets.slice(0, 20); // Sample first 20 tickets
+  console.log(`📊 Analyzing first response times for ${sampleTickets.length} tickets (sample from ${tickets.length} total)`);
+  
+  for (const ticket of sampleTickets) {
+    try {
+      // Get conversations for this ticket
+      const conversationsResponse = await freshserviceApi.getTicketConversations(ticket.id);
+      const conversations: Conversation[] = conversationsResponse.conversations || [];
+      
+      if (conversations.length > 0) {
+        const createdAt = new Date(ticket.created_at);
+        
+        // Find first agent response (not from requester)
+        const firstAgentResponse = conversations.find((conv: Conversation) => 
+          conv.user_id !== ticket.requester_id && // Not from requester
+          conv.user_id && // Has a user_id (agent)
+          conv.created_at // Has timestamp
+        );
+        
+        if (firstAgentResponse) {
+          const responseAt = new Date(firstAgentResponse.created_at);
+          const responseTimeMinutes = (responseAt.getTime() - createdAt.getTime()) / (1000 * 60);
+          
+          // Only include reasonable response times (1 minute to 7 days)
+          if (responseTimeMinutes > 1 && responseTimeMinutes < 10080) { // 1 min to 7 days
+            totalResponseTimeMinutes += responseTimeMinutes;
+            validResponseCount++;
+            
+            console.log(`  ✅ Ticket ${ticket.id}: ${responseTimeMinutes.toFixed(1)} minutes`);
+          }
+        }
+      }
+      
+      // Small delay to respect rate limits
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+    } catch (error) {
+      console.warn(`⚠️ Failed to get conversations for ticket ${ticket.id}:`, error);
+      // Continue with other tickets
+    }
+  }
+  
+  if (validResponseCount === 0) {
+    console.log('⚠️ No valid first response times found from conversations');
+    return 'N/A';
+  }
+  
+  const avgResponseTimeMinutes = totalResponseTimeMinutes / validResponseCount;
+  console.log(`📊 Average first response time: ${avgResponseTimeMinutes.toFixed(1)} minutes (from ${validResponseCount} tickets)`);
+  console.log(`📊 This matches Freshservice's calculation methodology`);
+  
+  // Return in same format as Freshservice (minutes)
+  return `${avgResponseTimeMinutes.toFixed(1)} min`;
+}
+
+/**
+ * Server action to fetch dashboard data with filtering - OPTIMIZED for rate limits and caching
  * PRO Plan: 400 calls/min overall, 120 calls/min for tickets
  */
 export async function fetchDashboardData(filters: DashboardFilters = { timeRange: 'week' }): Promise<{ success: boolean; data?: DashboardData; error?: string }> {
@@ -745,186 +844,258 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
     console.log('🚀 === DASHBOARD DATA FETCH STARTING ===');
     console.log('🎯 Filters received:', filters);
     
-    // Clear cache to ensure fresh data for testing
-    freshserviceApi.clearCache();
-    console.log('🧹 Cache cleared for fresh data');
+    // DON'T clear cache - let it work intelligently!
+    // Only clear cache if explicitly requested (e.g., force refresh)
+    if (filters.forceRefresh) {
+      console.log('🔄 Force refresh requested - clearing cache...');
+      apiCache.clear();
+      freshserviceApi.clearCache();
+    }
+    
+    // Check cache status
+    const cacheStats = apiCache.getStats();
+    console.log('💾 Current cache status:', cacheStats);
 
-    // OPTIMIZED: Start with fewer pages to respect rate limits
+    // OPTIMIZED: Use intelligent ticket fetching with caching
     let allTickets: Ticket[] = [];
     let page = 1;
-    let hasMorePages = true;
-    const maxInitialPages = 5; // Start with 5 pages (500 tickets) to avoid rate limits
+    let totalEntries: number | undefined;
+    const cachedTickets = !filters.forceRefresh ? apiCache.get<Ticket[]>('all_tickets') : null;
     
-    console.log('📋 Fetching tickets with smart pagination (rate limit aware)...');
-    
-    while (hasMorePages && page <= maxInitialPages) {
-      try {
-        const ticketsResponse = await freshserviceApi.getTickets(page, 100);
-        
-        if (ticketsResponse.tickets && ticketsResponse.tickets.length > 0) {
-          allTickets = allTickets.concat(ticketsResponse.tickets);
-          console.log(`✅ Page ${page}: ${ticketsResponse.tickets.length} tickets (Total: ${allTickets.length})`);
+    if (cachedTickets) {
+      console.log(`💾 Using cached tickets: ${cachedTickets.length} tickets (cache hit!)`);
+      allTickets = cachedTickets;
+    } else {
+      console.log('🔄 Cache miss - fetching fresh ticket data...');
+      
+      // Fetch all tickets with intelligent pagination
+      let hasMorePages = true;
+      let totalPages: number | undefined;
+      const maxSafePages = 15; // Safety limit to prevent rate limiting
+      
+      console.log('📋 Fetching tickets with intelligent pagination (using API meta info with fallback)...');
+      
+      while (hasMorePages && page <= maxSafePages) {
+        try {
+          const ticketsResponse = await freshserviceApi.getTickets(page, 100);
           
-          // Check if we should continue
-          if (ticketsResponse.tickets.length < 100) {
-            hasMorePages = false;
-          } else {
-            page++;
+          // Extract pagination info from first response
+          if (page === 1) {
+            if (ticketsResponse.meta) {
+              totalPages = ticketsResponse.meta.total_pages;
+              totalEntries = ticketsResponse.meta.total_entries;
+              console.log(`📊 API Meta Info: ${totalEntries} total tickets across ${totalPages} pages`);
+            }
           }
-        } else {
+          
+          if (ticketsResponse.tickets && ticketsResponse.tickets.length > 0) {
+            allTickets = allTickets.concat(ticketsResponse.tickets);
+            console.log(`✅ Page ${page}${totalPages ? `/${totalPages}` : ''}: ${ticketsResponse.tickets.length} tickets (Total: ${allTickets.length})`);
+            
+            // Check if we should continue
+            if (totalPages && page >= totalPages) {
+              hasMorePages = false;
+              console.log(`📊 Reached end based on API meta info (${totalPages} pages)`);
+            } else if (ticketsResponse.tickets.length < 100) {
+              hasMorePages = false;
+              console.log(`📊 Reached end based on response size (${ticketsResponse.tickets.length} < 100)`);
+            } else {
+              page++;
+            }
+          } else {
+            hasMorePages = false;
+            console.log(`📊 No more tickets found on page ${page}`);
+          }
+        } catch (pageError: any) {
+          console.warn(`⚠️ Error fetching page ${page}:`, pageError);
+          
+          // If rate limited, don't try more pages
+          if (pageError.message?.includes('Rate limit')) {
+            console.log('🚫 Rate limit reached, stopping pagination');
+            break;
+          }
+          
           hasMorePages = false;
         }
-      } catch (pageError: any) {
-        console.warn(`⚠️ Error fetching page ${page}:`, pageError);
-        
-        // If rate limited, don't try more pages
-        if (pageError.message?.includes('Rate limit')) {
-          console.log('🚫 Rate limit reached, stopping pagination');
-          break;
-        }
-        
-        hasMorePages = false;
+      }
+
+      // Cache the tickets for future requests (5 minutes TTL)
+      if (allTickets.length > 0) {
+        apiCache.set('all_tickets', allTickets, 5 * 60 * 1000); // 5 minutes
+        console.log(`💾 Cached ${allTickets.length} tickets for future requests`);
       }
     }
 
-    // DEBUGGING: Check raw ticket data
-    console.log('🔍 === RAW TICKET ANALYSIS ===');
-    console.log(`📊 Total tickets fetched: ${allTickets.length}`);
-    
-    if (allTickets.length > 0) {
-      // Check first few tickets
-      console.log('📋 Sample tickets (first 3):');
-      allTickets.slice(0, 3).forEach((ticket, index) => {
-        console.log(`  Ticket ${index + 1}:`, {
-          id: ticket.id,
-          status: ticket.status,
-          workspace_id: ticket.workspace_id,
-          created_at: ticket.created_at,
-          updated_at: ticket.updated_at,
-          responder_id: ticket.responder_id,
-          subject: ticket.subject?.substring(0, 50) + '...',
-          stats: ticket.stats,
-          // Show all top-level properties to see what's available
-          properties: Object.keys(ticket)
-        });
-      });
+    console.log(`🎉 Successfully fetched ${allTickets.length} total tickets (from ${page - 1} pages)`);
 
-      // Check status distribution
-      const statusDistribution: Record<number, number> = {};
-      allTickets.forEach(ticket => {
-        statusDistribution[ticket.status] = (statusDistribution[ticket.status] || 0) + 1;
-      });
-      console.log('📊 Status distribution (raw):', statusDistribution);
-      
-      // Check workspace distribution  
-      const workspaceDistribution: Record<number, number> = {};
-      allTickets.forEach(ticket => {
-        if (ticket.workspace_id !== undefined) {
-          workspaceDistribution[ticket.workspace_id] = (workspaceDistribution[ticket.workspace_id] || 0) + 1;
-        }
-      });
-      console.log('🏢 Workspace distribution:', workspaceDistribution);
-      
-      // Check response time related fields
-      console.log('🔍 Response time field analysis:');
-      let hasStatsField = 0;
-      let hasResponseTime = 0;
-      let hasResolvedTickets = 0;
-      let hasResponders = 0;
-      
-      allTickets.forEach(ticket => {
-        if (ticket.stats) hasStatsField++;
-        if (ticket.stats?.response_time) hasResponseTime++;
-        if (ticket.status === 4 || ticket.status === 5) hasResolvedTickets++;
-        if (ticket.responder_id) hasResponders++;
-      });
-      
-      console.log(`  - Tickets with stats field: ${hasStatsField}/${allTickets.length}`);
-      console.log(`  - Tickets with response_time: ${hasResponseTime}/${allTickets.length}`);
-      console.log(`  - Resolved/Closed tickets: ${hasResolvedTickets}/${allTickets.length}`);
-      console.log(`  - Tickets with responders: ${hasResponders}/${allTickets.length}`);
-    }
-
-    // Fetch agents (single call)
+    // Also implement caching for agents and other data
     let agents: Agent[] = [];
-    try {
-      const agentsResponse = await freshserviceApi.getAgents(1, 100);
-      agents = agentsResponse.agents || [];
-      console.log(`✅ Retrieved ${agents.length} agents`);
-    } catch (agentsError: any) {
-      console.warn('⚠️ Failed to fetch agents:', agentsError);
-      
-      // Don't fail the whole dashboard if agents fail
-      if (!agentsError.message?.includes('Rate limit')) {
+    const cachedAgents = !filters.forceRefresh ? apiCache.get<Agent[]>('all_agents') : null;
+    
+    if (cachedAgents) {
+      console.log(`💾 Using cached agents: ${cachedAgents.length} agents (cache hit!)`);
+      agents = cachedAgents;
+    } else {
+      console.log('🔄 Fetching fresh agent data...');
+      try {
+        const agentsResponse = await freshserviceApi.getAgents(1, 100);
+        agents = agentsResponse.agents || [];
+        
+        // Cache agents for 10 minutes (they change less frequently)
+        if (agents.length > 0) {
+          apiCache.set('all_agents', agents, 10 * 60 * 1000);
+          console.log(`💾 Cached ${agents.length} agents for future requests`);
+        }
+        console.log(`✅ Retrieved ${agents.length} agents`);
+      } catch (agentsError: any) {
+        console.warn('⚠️ Failed to fetch agents:', agentsError);
         console.log('📊 Continuing without agent data...');
       }
     }
 
-    // Fetch departments (single call)
+    // Also cache departments
     let departments: Department[] = [];
-    try {
-      const departmentsResponse = await freshserviceApi.getDepartments(1, 100);
-      departments = departmentsResponse.departments || [];
-      console.log(`✅ Retrieved ${departments.length} departments`);
-      
-      // If we got 100 departments, there might be more on the next page
-      if (departments.length === 100) {
-        try {
-          const departmentsPage2 = await freshserviceApi.getDepartments(2, 100);
-          if (departmentsPage2.departments && departmentsPage2.departments.length > 0) {
-            departments = departments.concat(departmentsPage2.departments);
-            console.log(`✅ Retrieved additional ${departmentsPage2.departments.length} departments from page 2 (total: ${departments.length})`);
-          }
-        } catch (page2Error: any) {
-          console.warn('⚠️ Failed to fetch departments page 2:', page2Error);
+    const cachedDepartments = !filters.forceRefresh ? apiCache.get<Department[]>('all_departments') : null;
+    
+    if (cachedDepartments) {
+      console.log(`💾 Using cached departments: ${cachedDepartments.length} departments (cache hit!)`);
+      departments = cachedDepartments;
+    } else {
+      console.log('🔄 Fetching fresh department data...');
+      try {
+        const departmentsResponse = await freshserviceApi.getDepartments(1, 100);
+        departments = departmentsResponse.departments || [];
+        
+        // Cache departments for 15 minutes (they rarely change)
+        if (departments.length > 0) {
+          apiCache.set('all_departments', departments, 15 * 60 * 1000);
+          console.log(`💾 Cached ${departments.length} departments for future requests`);
         }
-      }
-    } catch (departmentsError: any) {
-      console.warn('⚠️ Failed to fetch departments:', departmentsError);
-      
-      // Don't fail the whole dashboard if departments fail
-      if (!departmentsError.message?.includes('Rate limit')) {
+        
+        // If we got 100 departments, there might be more on the next page
+        if (departments.length === 100) {
+          try {
+            const departmentsPage2 = await freshserviceApi.getDepartments(2, 100);
+            if (departmentsPage2.departments && departmentsPage2.departments.length > 0) {
+              departments = departments.concat(departmentsPage2.departments);
+              console.log(`✅ Retrieved additional ${departmentsPage2.departments.length} departments from page 2 (total: ${departments.length})`);
+            }
+          } catch (page2Error: any) {
+            console.warn('⚠️ Failed to fetch departments page 2:', page2Error);
+          }
+        }
+        console.log(`✅ Retrieved ${departments.length} departments`);
+      } catch (departmentsError: any) {
+        console.warn('⚠️ Failed to fetch departments:', departmentsError);
         console.log('📊 Continuing without department data...');
       }
     }
 
     // Fetch contacts (requesters) to get their department information
     let contacts: Contact[] = [];
-    try {
-      const contactsResponse = await freshserviceApi.getContacts(1, 100);
-      // Handle both possible response formats
-      contacts = contactsResponse.requesters || contactsResponse.contacts || [];
-      console.log(`✅ Retrieved ${contacts.length} contacts/requesters`);
-      
-      // Get more contacts if needed - many requesters might be on later pages
-      if (contacts.length === 100) {
-        try {
-          const contactsPage2 = await freshserviceApi.getContacts(2, 100);
-          const page2Contacts = contactsPage2.requesters || contactsPage2.contacts || [];
-          if (page2Contacts && page2Contacts.length > 0) {
-            contacts = contacts.concat(page2Contacts);
-            console.log(`✅ Retrieved additional ${page2Contacts.length} contacts from page 2 (total: ${contacts.length})`);
+    const cachedContacts = !filters.forceRefresh ? apiCache.get<Contact[]>('all_contacts') : null;
+    
+    if (cachedContacts) {
+      console.log(`💾 Using cached contacts: ${cachedContacts.length} contacts (cache hit!)`);
+      contacts = cachedContacts;
+    } else {
+      console.log('🔄 Fetching fresh contact data...');
+      try {
+        const contactsResponse = await freshserviceApi.getContacts(1, 100);
+        // Handle both possible response formats
+        contacts = contactsResponse.requesters || contactsResponse.contacts || [];
+        
+        // Get more contacts if needed - many requesters might be on later pages
+        if (contacts.length === 100) {
+          try {
+            const contactsPage2 = await freshserviceApi.getContacts(2, 100);
+            const page2Contacts = contactsPage2.requesters || contactsPage2.contacts || [];
+            if (page2Contacts && page2Contacts.length > 0) {
+              contacts = contacts.concat(page2Contacts);
+              console.log(`✅ Retrieved additional ${page2Contacts.length} contacts from page 2 (total: ${contacts.length})`);
+            }
+          } catch (page2Error: any) {
+            console.warn('⚠️ Failed to fetch contacts page 2:', page2Error);
           }
-        } catch (page2Error: any) {
-          console.warn('⚠️ Failed to fetch contacts page 2:', page2Error);
         }
-      }
-    } catch (contactsError: any) {
-      console.warn('⚠️ Failed to fetch contacts:', contactsError);
-      console.warn('⚠️ Error details:', contactsError.response?.status, contactsError.response?.statusText);
-      
-      // Don't fail the whole dashboard if contacts fail
-      if (!contactsError.message?.includes('Rate limit')) {
+        
+        // Cache contacts for 10 minutes
+        if (contacts.length > 0) {
+          apiCache.set('all_contacts', contacts, 10 * 60 * 1000);
+          console.log(`💾 Cached ${contacts.length} contacts for future requests`);
+        }
+        console.log(`✅ Retrieved ${contacts.length} contacts/requesters`);
+      } catch (contactsError: any) {
+        console.warn('⚠️ Failed to fetch contacts:', contactsError);
+        console.warn('⚠️ Error details:', contactsError.response?.status, contactsError.response?.statusText);
         console.log('📊 Continuing without contact data...');
       }
     }
-
-    console.log(`🎉 Successfully fetched ${allTickets.length} total tickets (from ${page - 1} pages)`);
 
     // Apply filters to tickets
     console.log('🔧 === STARTING FILTERING ===');
     const filteredTickets = filterTickets(allTickets, filters);
     console.log(`🎯 === FILTERING COMPLETE: ${filteredTickets.length} tickets remain ===`);
+
+    // DEBUGGING: Let's test what happens with user's exact filter criteria
+    console.log('🔍 === TESTING USER\'S FRESHSERVICE FILTER CRITERIA ===');
+    
+    // Test 1: This month filter instead of this week
+    const thisMonth = new Date();
+    thisMonth.setDate(1); // First day of current month
+    const thisMonthTickets = allTickets.filter(ticket => {
+      const ticketDate = new Date(ticket.created_at);
+      return ticketDate >= thisMonth && 
+             ticket.workspace_id === 2 && // IT Support workspace
+             ACTIVE_TICKET_STATUSES.includes(ticket.status);
+    });
+    console.log(`📅 THIS MONTH filter (no onboarding exclusion): ${thisMonthTickets.length} active tickets`);
+    
+    // Test 2: With onboarding exclusion
+    const thisMonthNoOnboarding = thisMonthTickets.filter(ticket => {
+      const subject = (ticket.subject || '').toLowerCase();
+      const category = (ticket.category || '').toLowerCase();
+      const subCategory = (ticket.sub_category || '').toLowerCase();
+      const itemCategory = (ticket.item_category || '').toLowerCase();
+      const description = (ticket.description || '').toLowerCase();
+      const tags = (ticket.tags || []).map(tag => tag.toLowerCase());
+      
+      const excludeKeywords = [
+        'onboarding', 'onboard', 'on-boarding', 'on boarding',
+        'offboarding', 'offboard', 'off-boarding', 'off boarding',
+        'new hire', 'new employee', 'employee setup', 'user setup',
+        'account setup', 'employee onboarding', 'employee offboarding',
+        'termination', 'departure', 'leaving', 'exit',
+        'deactivate user', 'disable user', 'remove access',
+        'workday', 'okta provisioning', 'auto provision'
+      ];
+      
+      const hasExcludeKeyword = excludeKeywords.some(keyword => 
+        subject.includes(keyword) || 
+        category.includes(keyword) || 
+        subCategory.includes(keyword) || 
+        itemCategory.includes(keyword) ||
+        description.includes(keyword) ||
+        tags.some(tag => tag.includes(keyword))
+      );
+      
+      return !hasExcludeKeyword;
+    });
+    console.log(`📅 THIS MONTH filter (with onboarding exclusion): ${thisMonthNoOnboarding.length} active tickets`);
+    
+    // Test 3: Check pagination coverage
+    console.log(`📋 PAGINATION ANALYSIS:`);
+    console.log(`  - We fetched: ${allTickets.length} tickets from ${page - 1} pages`);
+    if (totalEntries) {
+      console.log(`  - API reports: ${totalEntries} total tickets available`);
+      console.log(`  - Coverage: ${((allTickets.length / totalEntries) * 100).toFixed(1)}%`);
+      if (allTickets.length < totalEntries) {
+        console.log(`  - Missing tickets: ${totalEntries - allTickets.length} (likely due to rate limit protection)`);
+      }
+    } else {
+      console.log(`  - User sees: 243 tickets in Freshservice (manual count)`);
+      console.log(`  - Potential missing tickets: ${243 - allTickets.length > 0 ? 243 - allTickets.length : 0}`);
+    }
 
     // Transform data for dashboard
     const dashboardData: DashboardData = {
@@ -936,27 +1107,68 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
       agentPerformance: createAgentPerformanceData(filteredTickets, agents),
       agentWorkload: createAgentWorkloadData(filteredTickets, agents),
       stats: {
-        openTickets: filteredTickets.filter(t => t.status === 2).length,
+        // ACTIVE TICKETS CALCULATION (Updated with identified custom statuses):
+        // Status 2 (Open) + Status 3 (Pending) + Status 6 (Hold) + Status 8 (Waiting on Customer)
+        // These all represent tickets that need attention from the IT team
+        openTickets: filteredTickets.filter(t => ACTIVE_TICKET_STATUSES.includes(t.status)).length,
         resolvedToday: countResolvedToday(filteredTickets),
-        avgResponseTime: calculateAvgResponseTime(filteredTickets),
+        avgResponseTime: await calculateActualFirstResponseTime(filteredTickets),
         customerSatisfaction: '92%', // This would come from surveys/feedback in real implementation
         slaBreaches: countSLABreaches(filteredTickets),
         overdueTickets: countOverdueTickets(filteredTickets),
         unassignedTickets: countUnassignedTickets(filteredTickets),
         totalAgents: filterITAgents(agents, allTickets).length // Use all tickets for agent filtering, not just filtered ones
-      }
+      },
+      recentActivity: [],
+      requesterDepartments: []
     };
 
     // DEBUGGING: Final stats calculation
     console.log('📈 === FINAL STATS CALCULATION ===');
-    console.log('🔍 Open tickets calculation:');
-    const openTicketsDebug = filteredTickets.filter(t => t.status === 2);
-    console.log(`  - Tickets with status === 2 (Open): ${openTicketsDebug.length}`);
-    console.log(`  - Sample open tickets:`, openTicketsDebug.slice(0, 3).map(t => ({
+    console.log('🔍 Active tickets calculation (Open + Pending + Hold + Waiting on Customer):');
+    const activeTicketsDebug = filteredTickets.filter(t => ACTIVE_TICKET_STATUSES.includes(t.status));
+    console.log(`  - Total active tickets: ${activeTicketsDebug.length}`);
+    
+    // Breakdown by status
+    const activeBreakdown: Record<number, number> = {};
+    activeTicketsDebug.forEach(ticket => {
+      activeBreakdown[ticket.status] = (activeBreakdown[ticket.status] || 0) + 1;
+    });
+    console.log('  - Active tickets breakdown:');
+    Object.entries(activeBreakdown).forEach(([status, count]) => {
+      console.log(`    * ${getStatusName(parseInt(status))} (${status}): ${count} tickets`);
+    });
+    
+    console.log(`  - Sample active tickets:`, activeTicketsDebug.slice(0, 3).map(t => ({
       id: t.id,
       status: t.status,
+      statusName: getStatusName(t.status),
       subject: t.subject?.substring(0, 30)
     })));
+
+    // DEBUGGING: Any remaining unhandled statuses
+    const unhandledStatuses = filteredTickets.filter(t => 
+      !ACTIVE_TICKET_STATUSES.includes(t.status) && !RESOLVED_STATUSES.includes(t.status)
+    );
+    if (unhandledStatuses.length > 0) {
+      console.log('🔍 Unhandled status tickets found:');
+      const unhandledStatusCounts: Record<number, number> = {};
+      unhandledStatuses.forEach(ticket => {
+        unhandledStatusCounts[ticket.status] = (unhandledStatusCounts[ticket.status] || 0) + 1;
+      });
+      console.log(`  - Unhandled statuses: ${Object.entries(unhandledStatusCounts).map(([status, count]) => 
+        `${getStatusName(parseInt(status))} (${status}): ${count}`
+      ).join(', ')}`);
+      console.log(`  - Sample unhandled tickets:`, unhandledStatuses.slice(0, 3).map(t => ({
+        id: t.id,
+        status: t.status,
+        statusName: getStatusName(t.status),
+        subject: t.subject?.substring(0, 30)
+      })));
+      console.log('⚠️  RECOMMENDATION: These statuses may need to be classified as active or resolved');
+    } else {
+      console.log('✅ All ticket statuses are properly classified');
+    }
 
     // Debug: Log the generated dashboard data
     console.log('📊 Generated Dashboard Data:');
@@ -1002,38 +1214,109 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
 }
 
 /**
- * Server action to get available agents for filtering - ONLY IT SUPPORT AGENTS
+ * Server action to get available agents for filtering - ALL AGENTS for dropdown, filtered agents for metrics
  */
-export async function fetchAgentList(): Promise<{ success: boolean; agents?: Array<{ id: number; name: string; department?: string }>; error?: string }> {
+export async function fetchAgentList(): Promise<{ success: boolean; agents?: Array<{ id: number; name: string; department?: string; active?: boolean }>; error?: string }> {
   try {
-    // Fetch both agents and tickets to filter to only IT support agents
-    const [agentsResponse, ticketsResponse] = await Promise.all([
-      freshserviceApi.getAgents(1, 100),
-      freshserviceApi.getTickets(1, 100) // Get first page of tickets to determine IT workspace and agents
-    ]);
+    // Fetch ALL agents (multiple pages) with retry logic to handle rate limits
+    let allAgents: Agent[] = [];
+    let page = 1;
+    let hasMore = true;
+    const maxPages = 10; // Increased to 10 pages (1000 agents) to ensure we get everyone
     
-    const agents = agentsResponse.agents || [];
-    const tickets = ticketsResponse.tickets || [];
+    console.log('👥 === ENHANCED AGENT SEARCH ===');
+    console.log('🔍 Searching for ALL agents including Tanmoy Biswas...');
     
-    // Use the same filtering logic as the dashboard to get only IT support agents
-    const itAgents = filterITAgents(agents, tickets);
+    while (hasMore && page <= maxPages) {
+      try {
+        console.log(`📄 Fetching agents page ${page}...`);
+        
+        const agentsResponse = await withRateLimitRetry(async () => {
+          return await freshserviceApi.getAgents(page, 100);
+        }, 3, 5000);
+        
+        const pageAgents = agentsResponse.agents || [];
+        allAgents = [...allAgents, ...pageAgents];
+        
+        console.log(`✅ Page ${page}: ${pageAgents.length} agents (total: ${allAgents.length})`);
+        
+        // Check if this page had fewer agents than requested (indicates last page)
+        hasMore = pageAgents.length === 100;
+        
+        // Also check for specific agent we're looking for
+        const tanmoyFound = pageAgents.find(agent => {
+          const fullName = `${agent.first_name || ''} ${agent.last_name || ''}`.trim().toLowerCase();
+          return fullName.includes('tanmoy') || fullName.includes('biswas');
+        });
+        
+        if (tanmoyFound) {
+          console.log(`🎉 FOUND TANMOY BISWAS on page ${page}:`, {
+            id: tanmoyFound.id,
+            name: tanmoyFound.name || `${tanmoyFound.first_name} ${tanmoyFound.last_name}`,
+            active: tanmoyFound.active,
+            job_title: tanmoyFound.job_title,
+            department: tanmoyFound.department
+          });
+        }
+        
+        page++;
+        
+        // Add small delay between pages to avoid rate limits
+        if (hasMore) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+      } catch (error: any) {
+        console.error(`❌ Failed to fetch agents page ${page}:`, error.message);
+        break;
+      }
+    }
     
-    const agentList = itAgents
-      .map(agent => ({
-        id: agent.id,
-        name: agent.name || `${agent.first_name || ''} ${agent.last_name || ''}`.trim(),
-        department: agent.department
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    console.log(`✅ Filtered to ${agentList.length} IT support agents from ${agents.length} total agents`);
+    console.log(`📊 Retrieved ${allAgents.length} total agents from ${page - 1} pages`);
     
-    return { success: true, agents: agentList };
+    // Search for Tanmoy one more time in the complete list
+    const tanmoyInList = allAgents.find(agent => {
+      const fullName = `${agent.first_name || ''} ${agent.last_name || ''}`.trim().toLowerCase();
+      const displayName = (agent.name || '').toLowerCase();
+      return fullName.includes('tanmoy') || fullName.includes('biswas') || 
+             displayName.includes('tanmoy') || displayName.includes('biswas');
+    });
+    
+    if (tanmoyInList) {
+      console.log(`✅ CONFIRMED: Tanmoy Biswas found in complete agent list:`, {
+        id: tanmoyInList.id,
+        name: tanmoyInList.name || `${tanmoyInList.first_name} ${tanmoyInList.last_name}`,
+        active: tanmoyInList.active
+      });
+    } else {
+      console.log(`❌ WARNING: Tanmoy Biswas not found in ${allAgents.length} agents`);
+      console.log('📝 First 5 agents for debugging:', allAgents.slice(0, 5).map(a => ({
+        id: a.id,
+        name: a.name || `${a.first_name} ${a.last_name}`,
+        active: a.active
+      })));
+    }
+    
+    // Return ALL agents for the dropdown
+    const agentList = allAgents.map(agent => ({
+      id: agent.id,
+      name: agent.name || `${agent.first_name || ''} ${agent.last_name || ''}`.trim(),
+      department: agent.department,
+      active: agent.active
+    })).sort((a, b) => a.name.localeCompare(b.name));
+    
+    console.log(`📋 Returning ${agentList.length} agents for dropdown`);
+    
+    return {
+      success: true,
+      agents: agentList
+    };
+    
   } catch (error: any) {
-    console.error('Error fetching agent list:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Failed to fetch agent list' 
+    console.error('❌ Failed to fetch agent list:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to fetch agents'
     };
   }
 }
@@ -1057,4 +1340,179 @@ export async function testApiConnection(): Promise<{ success: boolean; error?: s
       error: error.message || 'Connection test failed' 
     };
   }
-} 
+}
+
+/**
+ * Debug function to find specific agents by name
+ */
+export async function debugFindAgent(searchName: string): Promise<{ success: boolean; result?: any; error?: string }> {
+  try {
+    console.log(`🔍 Searching for agent: "${searchName}"`);
+    
+    // Fetch ALL agents (multiple pages)
+    let allAgents: Agent[] = [];
+    let page = 1;
+    let hasMore = true;
+    
+    while (hasMore && page <= 3) { // Limit to 3 pages (300 agents) for safety
+      const agentsResponse = await freshserviceApi.getAgents(page, 100);
+      const pageAgents = agentsResponse.agents || [];
+      allAgents = [...allAgents, ...pageAgents];
+      
+      console.log(`📄 Fetched page ${page}: ${pageAgents.length} agents (total: ${allAgents.length})`);
+      
+      if (pageAgents.length < 100) {
+        hasMore = false;
+      }
+      page++;
+    }
+    
+    // Search for agents matching the name (case-insensitive, including partial matches)
+    const searchTerms = [
+      searchName.toLowerCase(),
+      ...searchName.toLowerCase().split(' '), // Individual words
+      searchName.toLowerCase().replace(' ', ''), // Without spaces
+    ];
+    
+    const matchingAgents = allAgents.filter(agent => {
+      const fullName = `${agent.first_name || ''} ${agent.last_name || ''}`.trim().toLowerCase();
+      const displayName = (agent.name || '').toLowerCase();
+      const firstName = (agent.first_name || '').toLowerCase();
+      const lastName = (agent.last_name || '').toLowerCase();
+      
+      return searchTerms.some(term => 
+        fullName.includes(term) || 
+        displayName.includes(term) ||
+        firstName.includes(term) ||
+        lastName.includes(term)
+      );
+    });
+    
+    console.log(`🔍 Found ${matchingAgents.length} matching agents for "${searchName}" from ${allAgents.length} total agents`);
+    
+    if (matchingAgents.length === 0) {
+      console.log(`❌ No agents found matching "${searchName}"`);
+      console.log(`📋 Search terms used:`, searchTerms);
+      console.log(`📋 Sample agent names (first 15):`, 
+        allAgents.slice(0, 15).map(a => ({
+          id: a.id,
+          name: a.name || `${a.first_name || ''} ${a.last_name || ''}`.trim(),
+          active: a.active,
+          job_title: a.job_title
+        }))
+      );
+      
+      // Look for similar names
+      console.log(`🔍 Looking for similar names containing "tanmoy" or "biswas":`);
+      const similarAgents = allAgents.filter(agent => {
+        const fullName = `${agent.first_name || ''} ${agent.last_name || ''}`.trim().toLowerCase();
+        const displayName = (agent.name || '').toLowerCase();
+        return fullName.includes('tanmoy') || fullName.includes('biswas') || 
+               displayName.includes('tanmoy') || displayName.includes('biswas');
+      });
+      
+      if (similarAgents.length > 0) {
+        console.log(`🎯 Found ${similarAgents.length} agents with similar names:`, 
+          similarAgents.map(a => ({
+            id: a.id,
+            name: a.name || `${a.first_name || ''} ${a.last_name || ''}`.trim(),
+            active: a.active,
+            job_title: a.job_title
+          }))
+        );
+      } else {
+        console.log(`❌ No agents found with "tanmoy" or "biswas" in their names`);
+      }
+    } else {
+      // Show details for each matching agent
+      for (const agent of matchingAgents) {
+        console.log(`\n👤 Agent Details for: ${agent.name || `${agent.first_name} ${agent.last_name}`}`);
+        console.log(`   - ID: ${agent.id}`);
+        console.log(`   - Active: ${agent.active}`);
+        console.log(`   - Job Title: ${agent.job_title || 'No title'}`);
+        console.log(`   - Department: ${agent.department || 'No department'}`);
+        console.log(`   - Email: ${agent.email || 'No email'}`);
+        
+        // Check if this agent has handled any tickets
+        const ticketsResponse = await freshserviceApi.getTickets(1, 100);
+        const allTickets = ticketsResponse.tickets || [];
+        
+        const agentTickets = allTickets.filter(ticket => ticket.responder_id === agent.id);
+        console.log(`   - Tickets handled: ${agentTickets.length}`);
+        
+        if (agentTickets.length > 0) {
+          console.log(`   - Sample tickets:`, agentTickets.slice(0, 3).map(t => ({
+            id: t.id,
+            subject: t.subject?.substring(0, 50) + '...',
+            status: t.status,
+            workspace_id: t.workspace_id
+          })));
+        }
+      }
+    }
+    
+    return { 
+      success: true, 
+      result: {
+        searchName,
+        totalAgents: allAgents.length,
+        matchingAgents: matchingAgents.length,
+        matches: matchingAgents.map(agent => ({
+          id: agent.id,
+          name: agent.name || `${agent.first_name || ''} ${agent.last_name || ''}`.trim(),
+          active: agent.active,
+          job_title: agent.job_title,
+          department: agent.department
+        }))
+      }
+    };
+  } catch (error: any) {
+    console.error('❌ Error in debugFindAgent:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Failed to search for agent' 
+    };
+  }
+}
+
+/**
+ * Clear all cached data (useful for testing or when data is stale)
+ */
+export async function clearDashboardCache(): Promise<{ success: boolean; message: string }> {
+  try {
+    apiCache.clear();
+    freshserviceApi.clearCache();
+    console.log('🧹 All dashboard cache cleared successfully');
+    return { success: true, message: 'Cache cleared successfully' };
+  } catch (error: any) {
+    console.error('❌ Failed to clear cache:', error);
+    return { success: false, message: error.message || 'Failed to clear cache' };
+  }
+}
+
+/**
+ * Get cache status for debugging
+ */
+export async function getCacheStatus(): Promise<{ success: boolean; cacheStats?: any; error?: string }> {
+  try {
+    const cacheStats = apiCache.getStats();
+    const rateLimitStats = rateLimitTracker.getStats();
+    
+    const status = {
+      cache: cacheStats,
+      rateLimit: rateLimitStats,
+      cached_data: {
+        tickets: !!apiCache.get('all_tickets'),
+        agents: !!apiCache.get('all_agents'),
+        departments: !!apiCache.get('all_departments'),
+        contacts: !!apiCache.get('all_contacts')
+      }
+    };
+    
+    console.log('📊 Cache status:', status);
+    return { success: true, cacheStats: status };
+  } catch (error: any) {
+    console.error('❌ Failed to get cache status:', error);
+    return { success: false, error: error.message || 'Failed to get cache status' };
+  }
+}

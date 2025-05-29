@@ -6,7 +6,7 @@ import { Button } from "./ui/button"
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, Treemap } from 'recharts'
 import { formatNumber } from '../lib/utils'
 import { useState, useEffect } from 'react'
-import { DashboardData, DashboardFilters, fetchDashboardData, fetchAgentList, testApiConnection } from '../actions/dashboard'
+import { DashboardData, DashboardFilters, fetchDashboardData, fetchAgentList, testApiConnection, clearDashboardCache, getCacheStatus } from '../actions/dashboard'
 import { Users, Clock, AlertTriangle, CheckCircle, Activity, RotateCcw, Play, Pause } from 'lucide-react'
 
 // Modern color palette inspired by shadcn/ui
@@ -31,32 +31,37 @@ const COLORS = {
     red: 'hsl(0 84.2% 60.2%)',         // Error red
     purple: 'hsl(262.1 83.3% 57.8%)',  // Purple accent
     gray: 'hsl(215.4 16.3% 46.9%)',    // Neutral gray
+    yellow: 'hsl(47.9 95.8% 53.1%)',   // Bright yellow
+    cyan: 'hsl(189.6 94.5% 42.7%)',    // Cyan
+    pink: 'hsl(336.5 84.4% 69.8%)',    // Pink
   }
 }
 
-// Status colors matching shadcn design
+// Status colors for active tickets only (more vibrant and distinct)
 const STATUS_COLORS: Record<string, string> = {
-  'Open': COLORS.chart.blue,
-  'Pending': COLORS.chart.orange,
-  'Resolved': COLORS.chart.green,
-  'Closed': COLORS.chart.gray,
-  'New': COLORS.chart.purple
+  'Open': COLORS.chart.blue,           // Blue for open
+  'Pending': COLORS.chart.orange,      // Orange for pending  
+  'Hold': COLORS.chart.yellow,         // Yellow for hold
+  'Waiting on Customer': COLORS.chart.purple, // Purple for waiting
+  'Resolved': COLORS.chart.green,      // Green for resolved
+  'Closed': COLORS.chart.gray,         // Gray for closed (if shown)
+  'New': COLORS.chart.cyan             // Cyan for new
 }
 
-// Priority colors - monochrome gradient showing severity (light to dark)
+// Priority colors - distinct and meaningful
 const PRIORITY_COLORS: Record<string, string> = {
-  'Low': 'hsl(220 13% 85%)',      // Very light gray
-  'Medium': 'hsl(220 13% 65%)',   // Medium gray  
-  'High': 'hsl(220 13% 45%)',     // Dark gray
-  'Urgent': 'hsl(220 13% 25%)'    // Very dark gray
+  'Low': COLORS.chart.green,           // Green = low priority
+  'Medium': COLORS.chart.blue,         // Blue = medium priority  
+  'High': COLORS.chart.orange,         // Orange = high priority
+  'Urgent': COLORS.chart.red           // Red = urgent priority
 }
 
-// Workload colors - monochrome gradient showing load intensity (light to dark)
+// Workload colors - intuitive progression from light to heavy
 const WORKLOAD_COLORS: Record<string, string> = {
-  'Light': 'hsl(220 13% 85%)',      // Very light gray
-  'Moderate': 'hsl(220 13% 65%)',   // Medium gray
-  'Heavy': 'hsl(220 13% 45%)',      // Dark gray
-  'Overloaded': 'hsl(220 13% 25%)'  // Very dark gray
+  'Light': COLORS.chart.green,         // Green = light workload
+  'Moderate': COLORS.chart.blue,       // Blue = moderate workload
+  'Heavy': COLORS.chart.orange,        // Orange = heavy workload
+  'Overloaded': COLORS.chart.red       // Red = overloaded
 }
 
 // Mock data for fallback
@@ -106,21 +111,23 @@ const mockData: DashboardData = {
     { id: 4, name: 'Diana Ross', tickets: 19, resolution: 68, avgResponseTime: '4.1h', workload: 'Light' },
   ],
   agentWorkload: [
-    { name: 'Light', value: 2 },
-    { name: 'Moderate', value: 1 },
-    { name: 'Heavy', value: 1 },
-    { name: 'Overloaded', value: 0 },
+    { name: 'Light', value: 3 },
+    { name: 'Moderate', value: 2 },
+    { name: 'Heavy', value: 2 },
+    { name: 'Overloaded', value: 1 },
   ],
   stats: {
-    openTickets: 43,
-    resolvedToday: 18,
-    avgResponseTime: '2.4 hours',
-    customerSatisfaction: '92%',
+    openTickets: 87,
+    resolvedToday: 23,
+    avgResponseTime: '2.4h',
+    customerSatisfaction: '87%',
     slaBreaches: 5,
     overdueTickets: 12,
-    unassignedTickets: 8,
-    totalAgents: 4,
+    unassignedTickets: 3,
+    totalAgents: 8,
   },
+  recentActivity: [],
+  requesterDepartments: []
 }
 
 interface DashboardProps {
@@ -131,6 +138,7 @@ interface DashboardProps {
 export default function Dashboard({ initialData, error }: DashboardProps) {
   const [dashboardData, setDashboardData] = useState<DashboardData>(initialData || mockData)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [refreshType, setRefreshType] = useState<'normal' | 'force' | null>(null) // Track which button was clicked
   const [currentError, setCurrentError] = useState<string | null>(error || null)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'failed' | 'testing'>('connected')
   const [isUsingMockData, setIsUsingMockData] = useState(!initialData)
@@ -138,7 +146,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
     agentId: 'all',
     timeRange: 'week'
   })
-  const [availableAgents, setAvailableAgents] = useState<Array<{ id: number; name: string; department?: string }>>([])
+  const [availableAgents, setAvailableAgents] = useState<Array<{ id: number; name: string; department?: string; active?: boolean }>>([])
   const [agentsLoading, setAgentsLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0) // Key to force chart re-animation
 
@@ -228,14 +236,15 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  const handleRefresh = async () => {
+  const handleRefresh = async (forceRefresh = false) => {
     setIsRefreshing(true)
+    setRefreshType(forceRefresh ? 'force' : 'normal') // Track which button was clicked
     setCurrentError(null)
     setLastRefresh(new Date())
     
     try {
-      console.log('🔄 Refreshing dashboard data with filters:', filters)
-      const result = await fetchDashboardData(filters)
+      console.log(`🔄 ${forceRefresh ? 'Force refreshing' : 'Refreshing'} dashboard data with filters:`, filters)
+      const result = await fetchDashboardData({ ...filters, forceRefresh })
       
       if (result.success && result.data) {
         setDashboardData(result.data)
@@ -263,6 +272,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
       // Auto-refresh will pause due to error
     } finally {
       setIsRefreshing(false)
+      setRefreshType(null) // Reset refresh type
     }
   }
 
@@ -293,11 +303,21 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
     }
   }
 
-  // Add consistent colors to data
-  const statusDataWithColors = dashboardData.ticketsByStatus.map(item => ({
-    ...item,
-    color: STATUS_COLORS[item.name] || COLORS.chart.gray
-  }))
+  // Helper function to get color class for unassigned tickets
+  const getUnassignedColor = (count: number): string => {
+    if (count === 0) return 'text-green-600'      // Green when perfect (0)
+    if (count >= 10) return 'text-red-600'        // Red when high (10+)
+    if (count >= 5) return 'text-yellow-600'      // Yellow when moderate (5-9)
+    return 'text-blue-600'                        // Blue for low counts (1-4)
+  }
+
+  // Add consistent colors to data and filter for better readability
+  const statusDataWithColors = dashboardData.ticketsByStatus
+    .filter(item => item.name !== 'Closed' && item.name !== 'Resolved') // Only show active tickets that need attention
+    .map(item => ({
+      ...item,
+      color: STATUS_COLORS[item.name] || COLORS.chart.gray
+    }))
 
   const priorityDataWithColors = dashboardData.ticketsByPriority.map(item => ({
     ...item,
@@ -308,6 +328,19 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
     ...item,
     color: WORKLOAD_COLORS[item.name] || COLORS.chart.gray
   }))
+
+  // Fallback data if filtering results in empty arrays
+  const safeStatusData = statusDataWithColors.length > 0 ? statusDataWithColors : [
+    { name: 'No Data', value: 0, color: COLORS.chart.gray }
+  ]
+  
+  const safePriorityData = priorityDataWithColors.length > 0 ? priorityDataWithColors : [
+    { name: 'No Data', value: 0, color: COLORS.chart.gray }
+  ]
+
+  const safeWorkloadData = workloadDataWithColors.length > 0 ? workloadDataWithColors : [
+    { name: 'No Data', value: 0, color: COLORS.chart.gray }
+  ]
 
   return (
     <div className="min-h-screen bg-background">
@@ -371,9 +404,13 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                     {agentsLoading ? 'Loading agents...' : `All Agents${availableAgents.length > 0 ? ` (${availableAgents.length})` : ''}`}
                   </option>
                   {availableAgents.map(agent => (
-                    <option key={agent.id} value={agent.id}>
+                    <option key={agent.id} value={agent.id} style={{ 
+                      fontStyle: agent.active === false ? 'italic' : 'normal',
+                      opacity: agent.active === false ? 0.7 : 1 
+                    }}>
                       {agent.name}
                       {agent.department ? ` - ${agent.department}` : ''}
+                      {agent.active === false ? ' (Inactive)' : ''}
                     </option>
                   ))}
                 </select>
@@ -447,13 +484,25 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                 )}
                 
                 <Button 
-                  onClick={handleApplyFilters}
+                  onClick={() => handleRefresh(false)}
                   disabled={isRefreshing}
                   size="sm"
                   className="h-8"
                 >
-                  <RotateCcw className={`mr-1 h-3 w-3 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                  <RotateCcw className={`mr-1 h-3 w-3 ${isRefreshing && refreshType === 'normal' ? 'animate-spin' : ''}`} />
+                  {isRefreshing && refreshType === 'normal' ? 'Refreshing...' : 'Refresh'}
+                </Button>
+                
+                <Button 
+                  onClick={() => handleRefresh(true)}
+                  disabled={isRefreshing}
+                  variant="destructive"
+                  size="sm"
+                  className="h-8"
+                  title="Force refresh - clears cache and fetches fresh data"
+                >
+                  <RotateCcw className={`h-3 w-3 ${isRefreshing && refreshType === 'force' ? 'animate-spin' : ''}`} />
+                  Force
                 </Button>
               </div>
             </div>
@@ -487,12 +536,12 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
         <div className="grid gap-3 md:grid-cols-4 lg:grid-cols-6 mb-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Open Tickets</CardTitle>
+              <CardTitle className="text-sm font-medium">All unresolved tickets</CardTitle>
               <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{formatNumber(dashboardData.stats.openTickets)}</div>
-              <p className="text-xs text-muted-foreground">Currently open</p>
+              <p className="text-xs text-muted-foreground">Need attention</p>
             </CardContent>
           </Card>
           
@@ -524,7 +573,9 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-orange-600">{formatNumber(dashboardData.stats.unassignedTickets)}</div>
+              <div className={`text-2xl font-bold ${getUnassignedColor(dashboardData.stats.unassignedTickets)}`}>
+                {formatNumber(dashboardData.stats.unassignedTickets)}
+              </div>
               <p className="text-xs text-muted-foreground">Need assignment</p>
             </CardContent>
           </Card>
@@ -554,82 +605,120 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
 
         {/* Charts Grid - Optimized Layout for TV */}
         <div className="grid gap-4 lg:grid-cols-3 mb-6">
-          {/* Tickets by Status */}
+          {/* Active Tickets by Status - Only show tickets needing attention */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Tickets by Status</CardTitle>
+              <CardTitle className="text-lg">Active Tickets by Status</CardTitle>
+              <p className="text-sm text-muted-foreground">Tickets requiring attention ({safeStatusData.length} items, excludes resolved/closed)</p>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer key={`status-${refreshKey}`} width="100%" height={250}>
-                <PieChart>
-                  <Pie
-                    data={statusDataWithColors}
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    dataKey="value"
-                    label={({ name, value }) => `${name}: ${value}`}
-                    labelLine={false}
-                  >
-                    {statusDataWithColors.map((entry, index) => (
+                <BarChart 
+                  data={safeStatusData}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey="name" 
+                    angle={-45}
+                    textAnchor="end"
+                    height={60}
+                    interval={0}
+                    fontSize={12}
+                  />
+                  <YAxis />
+                  <Tooltip 
+                    formatter={(value, name) => [value, 'Tickets']}
+                    labelFormatter={(label) => `Status: ${label}`}
+                  />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    {safeStatusData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
 
-          {/* Tickets by Priority */}
+          {/* Tickets by Priority - Horizontal bars for better readability */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg">Tickets by Priority</CardTitle>
+              <p className="text-sm text-muted-foreground">Distribution across priority levels ({safePriorityData.length} items)</p>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer key={`priority-${refreshKey}`} width="100%" height={250}>
-                <PieChart>
-                  <Pie
-                    data={priorityDataWithColors}
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    dataKey="value"
-                    label={({ name, value }) => `${name}: ${value}`}
-                    labelLine={false}
-                  >
-                    {priorityDataWithColors.map((entry, index) => (
+                <BarChart 
+                  data={safePriorityData}
+                  margin={{ top: 20, right: 30, left: 40, bottom: 20 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip 
+                    formatter={(value, name) => [value, 'Tickets']}
+                    labelFormatter={(label) => `Priority: ${label}`}
+                  />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    {safePriorityData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
 
-          {/* Agent Workload */}
+          {/* Agent Workload - Improved pie chart with better spacing */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Agent Workload</CardTitle>
+              <CardTitle className="text-lg">Agent Workload Distribution</CardTitle>
+              <p className="text-sm text-muted-foreground">Current team capacity status</p>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer key={`workload-${refreshKey}`} width="100%" height={250}>
                 <PieChart>
                   <Pie
-                    data={workloadDataWithColors}
+                    data={safeWorkloadData}
                     cx="50%"
                     cy="50%"
-                    outerRadius={80}
+                    outerRadius={70}
+                    innerRadius={20}
                     dataKey="value"
-                    label={({ name, value }) => `${name}: ${value}`}
-                    labelLine={false}
+                    stroke="#fff"
+                    strokeWidth={2}
                   >
-                    {workloadDataWithColors.map((entry, index) => (
+                    {safeWorkloadData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip 
+                    formatter={(value, name) => [value, 'Agents']}
+                    labelFormatter={(label) => `Workload: ${label}`}
+                  />
+                  {/* Custom Legend */}
+                  <g>
+                    {safeWorkloadData.map((entry, index) => (
+                      <g key={`legend-${index}`}>
+                        <rect 
+                          x={20} 
+                          y={20 + index * 20} 
+                          width={12} 
+                          height={12} 
+                          fill={entry.color} 
+                        />
+                        <text 
+                          x={38} 
+                          y={20 + index * 20 + 9} 
+                          fontSize={12} 
+                          fill="#666"
+                        >
+                          {entry.name}: {entry.value}
+                        </text>
+                      </g>
+                    ))}
+                  </g>
                 </PieChart>
               </ResponsiveContainer>
             </CardContent>

@@ -129,4 +129,28 @@ class RateLimitTracker {
 
 // Export singleton instances
 export const apiCache = new APICache();
-export const rateLimitTracker = new RateLimitTracker(); 
+export const rateLimitTracker = new RateLimitTracker();
+
+// Add rate limit retry logic
+export async function withRateLimitRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 5000 // 5 seconds
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      if (error.response?.status === 429 && attempt < maxRetries) {
+        const retryAfter = parseInt(error.response.headers['retry-after']) || 5;
+        const delay = Math.max(retryAfter * 1000, baseDelay * attempt);
+        
+        console.log(`⏳ Rate limited, retrying in ${delay}ms (attempt ${attempt}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error(`Operation failed after ${maxRetries} attempts`);
+} 
