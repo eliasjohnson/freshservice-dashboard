@@ -1,6 +1,6 @@
 'use server'
 
-import { freshserviceApi, Ticket, Agent } from '../lib/freshservice';
+import { freshserviceApi, Ticket, Agent, Department, Contact } from '../lib/freshservice';
 
 // Enhanced dashboard data interface with more relevant metrics
 export interface DashboardData {
@@ -243,38 +243,68 @@ function createTicketsByPriorityChartData(tickets: Ticket[]): Array<{ name: stri
 }
 
 /**
- * Transform tickets to chart data by department (requester departments)
+ * Transform tickets to chart data by requester department (based on requester's actual department)
  */
-function createTicketsByDepartmentChartData(tickets: Ticket[]): Array<{ name: string; value: number }> {
+function createTicketsByDepartmentChartData(tickets: Ticket[], departments: Department[], contacts: Contact[]): Array<{ name: string; value: number }> {
   const departmentCounts: Record<string, number> = {};
   
+  console.log('🏢 === REQUESTER DEPARTMENT ANALYSIS ===');
+  console.log(`📊 Analyzing ${tickets.length} tickets by requester department`);
+  console.log(`🏛️ Available departments: ${departments.length}`);
+  console.log(`👤 Available contacts: ${contacts.length}`);
+  
+  // Create a map from department ID to department name
+  const departmentMap: Record<number, string> = {};
+  departments.forEach(dept => {
+    departmentMap[dept.id] = dept.name;
+  });
+  
+  // Create a map from contact ID to their department info
+  const contactDepartmentMap: Record<number, string[]> = {};
+  contacts.forEach(contact => {
+    if (contact.department_ids && contact.department_ids.length > 0) {
+      // Map department IDs to department names
+      contactDepartmentMap[contact.id] = contact.department_ids
+        .map(deptId => departmentMap[deptId])
+        .filter(name => name !== undefined);
+    } else if (contact.department_names && contact.department_names.length > 0) {
+      // Use department names directly if available
+      contactDepartmentMap[contact.id] = contact.department_names;
+    }
+  });
+  
+  console.log('👤 Sample contact department mappings:');
+  Object.entries(contactDepartmentMap).slice(0, 5).forEach(([contactId, depts]) => {
+    console.log(`  Contact ${contactId}: ${depts.join(', ')}`);
+  });
+  
+  let ticketsWithRequesterDepts = 0;
+  let ticketsWithoutRequesterDepts = 0;
+  
   tickets.forEach(ticket => {
-    let departmentName = 'Unknown Dept';
+    let departmentName = 'Unknown Department';
     
-    // Try multiple sources to identify department
-    if (ticket.group_id) {
-      departmentName = `Group ${ticket.group_id}`;
-    } else if (ticket.department_id) {
-      departmentName = `Dept ${ticket.department_id}`;
-    } else if (ticket.category) {
-      // Sometimes category contains department-like information
-      departmentName = ticket.category;
-    } else if (ticket.sub_category) {
-      // Sub-category might contain department info
-      departmentName = ticket.sub_category;
-    } else if (ticket.custom_fields) {
-      // Check custom fields for department information
-      const customDept = ticket.custom_fields['department'] || 
-                        ticket.custom_fields['dept'] || 
-                        ticket.custom_fields['team'] ||
-                        ticket.custom_fields['business_unit'];
-      if (customDept) {
-        departmentName = String(customDept);
+    // Look up the requester's department
+    if (ticket.requester_id && contactDepartmentMap[ticket.requester_id]) {
+      const requesterDepts = contactDepartmentMap[ticket.requester_id];
+      if (requesterDepts.length > 0) {
+        // Use the first department if there are multiple
+        departmentName = requesterDepts[0];
+        ticketsWithRequesterDepts++;
+      } else {
+        ticketsWithoutRequesterDepts++;
       }
+    } else {
+      ticketsWithoutRequesterDepts++;
     }
     
-    // Clean up department name
-    departmentName = departmentName.trim();
+    // Clean up department name for better display
+    departmentName = departmentName
+      .replace(/[_-]/g, ' ') // Replace underscores and dashes with spaces
+      .replace(/\b\w/g, l => l.toUpperCase()) // Title case
+      .trim();
+    
+    // Limit length for better chart display
     if (departmentName.length > 30) {
       departmentName = departmentName.substring(0, 30) + '...';
     }
@@ -282,10 +312,36 @@ function createTicketsByDepartmentChartData(tickets: Ticket[]): Array<{ name: st
     departmentCounts[departmentName] = (departmentCounts[departmentName] || 0) + 1;
   });
   
-  return Object.entries(departmentCounts)
+  console.log(`📊 Tickets with requester departments: ${ticketsWithRequesterDepts}`);
+  console.log(`📊 Tickets without requester departments: ${ticketsWithoutRequesterDepts}`);
+  
+  // Debug: Show some tickets that still ended up as unknown
+  const unknownTickets = tickets.filter(ticket => 
+    !ticket.requester_id || !contactDepartmentMap[ticket.requester_id] || 
+    contactDepartmentMap[ticket.requester_id].length === 0
+  );
+  
+  if (unknownTickets.length > 0) {
+    console.log(`🔍 Sample tickets still unknown (first 5):`);
+    unknownTickets.slice(0, 5).forEach((ticket, index) => {
+      console.log(`  Unknown Ticket ${index + 1}:`, {
+        id: ticket.id,
+        subject: ticket.subject?.substring(0, 50) + '...',
+        requester_id: ticket.requester_id,
+        requester_in_contacts: !!contactDepartmentMap[ticket.requester_id],
+        requester_depts: contactDepartmentMap[ticket.requester_id] || []
+      });
+    });
+  }
+  
+  const result = Object.entries(departmentCounts)
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value)
-    .slice(0, 10); // Top 10 departments for better visibility
+    .slice(0, 8); // Top 8 departments for better chart readability
+  
+  console.log('🏢 Final requester department breakdown:', result);
+  
+  return result;
 }
 
 /**
@@ -688,6 +744,10 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
   try {
     console.log('🚀 === DASHBOARD DATA FETCH STARTING ===');
     console.log('🎯 Filters received:', filters);
+    
+    // Clear cache to ensure fresh data for testing
+    freshserviceApi.clearCache();
+    console.log('🧹 Cache cleared for fresh data');
 
     // OPTIMIZED: Start with fewer pages to respect rate limits
     let allTickets: Ticket[] = [];
@@ -800,6 +860,65 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
       }
     }
 
+    // Fetch departments (single call)
+    let departments: Department[] = [];
+    try {
+      const departmentsResponse = await freshserviceApi.getDepartments(1, 100);
+      departments = departmentsResponse.departments || [];
+      console.log(`✅ Retrieved ${departments.length} departments`);
+      
+      // If we got 100 departments, there might be more on the next page
+      if (departments.length === 100) {
+        try {
+          const departmentsPage2 = await freshserviceApi.getDepartments(2, 100);
+          if (departmentsPage2.departments && departmentsPage2.departments.length > 0) {
+            departments = departments.concat(departmentsPage2.departments);
+            console.log(`✅ Retrieved additional ${departmentsPage2.departments.length} departments from page 2 (total: ${departments.length})`);
+          }
+        } catch (page2Error: any) {
+          console.warn('⚠️ Failed to fetch departments page 2:', page2Error);
+        }
+      }
+    } catch (departmentsError: any) {
+      console.warn('⚠️ Failed to fetch departments:', departmentsError);
+      
+      // Don't fail the whole dashboard if departments fail
+      if (!departmentsError.message?.includes('Rate limit')) {
+        console.log('📊 Continuing without department data...');
+      }
+    }
+
+    // Fetch contacts (requesters) to get their department information
+    let contacts: Contact[] = [];
+    try {
+      const contactsResponse = await freshserviceApi.getContacts(1, 100);
+      // Handle both possible response formats
+      contacts = contactsResponse.requesters || contactsResponse.contacts || [];
+      console.log(`✅ Retrieved ${contacts.length} contacts/requesters`);
+      
+      // Get more contacts if needed - many requesters might be on later pages
+      if (contacts.length === 100) {
+        try {
+          const contactsPage2 = await freshserviceApi.getContacts(2, 100);
+          const page2Contacts = contactsPage2.requesters || contactsPage2.contacts || [];
+          if (page2Contacts && page2Contacts.length > 0) {
+            contacts = contacts.concat(page2Contacts);
+            console.log(`✅ Retrieved additional ${page2Contacts.length} contacts from page 2 (total: ${contacts.length})`);
+          }
+        } catch (page2Error: any) {
+          console.warn('⚠️ Failed to fetch contacts page 2:', page2Error);
+        }
+      }
+    } catch (contactsError: any) {
+      console.warn('⚠️ Failed to fetch contacts:', contactsError);
+      console.warn('⚠️ Error details:', contactsError.response?.status, contactsError.response?.statusText);
+      
+      // Don't fail the whole dashboard if contacts fail
+      if (!contactsError.message?.includes('Rate limit')) {
+        console.log('📊 Continuing without contact data...');
+      }
+    }
+
     console.log(`🎉 Successfully fetched ${allTickets.length} total tickets (from ${page - 1} pages)`);
 
     // Apply filters to tickets
@@ -811,7 +930,7 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
     const dashboardData: DashboardData = {
       ticketsByStatus: createTicketsByStatusChartData(filteredTickets),
       ticketsByPriority: createTicketsByPriorityChartData(filteredTickets),
-      ticketsByCategory: createTicketsByDepartmentChartData(filteredTickets),
+      ticketsByCategory: createTicketsByDepartmentChartData(filteredTickets, departments, contacts),
       ticketsTrend: createTicketsTrendChartData(filteredTickets),
       resolutionTimes: createResolutionTimesData(filteredTickets),
       agentPerformance: createAgentPerformanceData(filteredTickets, agents),

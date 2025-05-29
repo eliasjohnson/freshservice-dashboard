@@ -3,7 +3,7 @@
 import React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
 import { Button } from "./ui/button"
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts'
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, Treemap } from 'recharts'
 import { formatNumber } from '../lib/utils'
 import { useState, useEffect } from 'react'
 import { DashboardData, DashboardFilters, fetchDashboardData, fetchAgentList, testApiConnection } from '../actions/dashboard'
@@ -680,17 +680,13 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
             </CardHeader>
             <CardContent>
               <ResponsiveContainer key={`departments-${refreshKey}`} width="100%" height={250}>
-                <LineChart data={dashboardData.ticketsByCategory}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis 
-                    dataKey="name" 
-                    angle={-45} 
-                    textAnchor="end" 
-                    height={90} 
-                    interval={0}
-                    className="text-xs fill-muted-foreground"
-                  />
-                  <YAxis className="text-xs fill-muted-foreground" />
+                <Treemap
+                  data={dashboardData.ticketsByCategory}
+                  dataKey="value"
+                  aspectRatio={4/3}
+                  stroke="#fff"
+                  fill={COLORS.chart.blue}
+                >
                   <Tooltip 
                     labelFormatter={(label) => `Department: ${label}`}
                     formatter={(value) => [`${value} tickets`, 'Ticket Count']}
@@ -701,15 +697,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                       boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                     }}
                   />
-                  <Line 
-                    type="monotone" 
-                    dataKey="value" 
-                    stroke={COLORS.chart.blue} 
-                    strokeWidth={3}
-                    dot={{ fill: COLORS.chart.blue, strokeWidth: 2, r: 4 }}
-                    activeDot={{ r: 6, stroke: COLORS.chart.blue, strokeWidth: 2 }}
-                  />
-                </LineChart>
+                </Treemap>
               </ResponsiveContainer>
             </CardContent>
           </Card>

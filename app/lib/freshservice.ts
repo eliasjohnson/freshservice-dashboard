@@ -64,6 +64,18 @@ export interface Group {
   updated_at: string;
 }
 
+export interface Department {
+  id: number;
+  name: string;
+  description?: string;
+  head_user_id?: number;
+  prime_user_id?: number;
+  domains?: string[];
+  custom_fields?: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Workspace {
   id: number;
   name: string;
@@ -92,8 +104,34 @@ export interface GroupResponse {
   groups: Group[];
 }
 
+export interface DepartmentResponse {
+  departments: Department[];
+}
+
 export interface WorkspaceResponse {
   workspaces: Workspace[];
+}
+
+export interface Contact {
+  id: number;
+  name: string;
+  first_name?: string;
+  last_name?: string;
+  email: string;
+  phone?: string;
+  mobile_phone_number?: string;
+  department_ids?: number[];
+  department_names?: string[];
+  job_title?: string;
+  active: boolean;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContactResponse {
+  contacts?: Contact[];
+  requesters?: Contact[];
 }
 
 /**
@@ -335,6 +373,82 @@ export class FreshserviceApiClient {
       return response.data;
     } catch (error) {
       console.error(`Error fetching workspaces page ${page}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get departments with caching and rate limiting
+   */
+  async getDepartments(page: number = 1, perPage: number = 100): Promise<DepartmentResponse> {
+    const cacheKey = `departments_${page}_${perPage}`;
+    
+    // Check cache first
+    const cachedData = apiCache.get<DepartmentResponse>(cacheKey);
+    if (cachedData) {
+      console.log(`📦 Cache HIT: departments page ${page} (${cachedData.departments?.length || 0} departments)`);
+      return cachedData;
+    }
+    
+    // Check rate limits
+    if (!rateLimitTracker.canMakeRequest('other')) {
+      const waitTime = rateLimitTracker.getWaitTime();
+      const waitSeconds = Math.ceil(waitTime / 1000);
+      throw new Error(`Rate limit exceeded. Please wait ${waitSeconds} seconds before making more requests.`);
+    }
+    
+    console.log(`🌐 Cache MISS: fetching departments page ${page}...`);
+    
+    try {
+      const response: AxiosResponse<DepartmentResponse> = await this.axiosInstance.get('/departments', {
+        params: { page, per_page: perPage }
+      });
+      
+      // Cache the response
+      apiCache.set(cacheKey, response.data);
+      console.log(`💾 Cached departments page ${page}`);
+      
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching departments page ${page}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get contacts with caching and rate limiting
+   */
+  async getContacts(page: number = 1, perPage: number = 100): Promise<ContactResponse> {
+    const cacheKey = `contacts_${page}_${perPage}`;
+    
+    // Check cache first
+    const cachedData = apiCache.get<ContactResponse>(cacheKey);
+    if (cachedData) {
+      console.log(`📦 Cache HIT: contacts page ${page} (${cachedData.contacts?.length || 0} contacts)`);
+      return cachedData;
+    }
+    
+    // Check rate limits
+    if (!rateLimitTracker.canMakeRequest('other')) {
+      const waitTime = rateLimitTracker.getWaitTime();
+      const waitSeconds = Math.ceil(waitTime / 1000);
+      throw new Error(`Rate limit exceeded. Please wait ${waitSeconds} seconds before making more requests.`);
+    }
+    
+    console.log(`🌐 Cache MISS: fetching contacts page ${page}...`);
+    
+    try {
+      const response: AxiosResponse<ContactResponse> = await this.axiosInstance.get('/requesters', {
+        params: { page, per_page: perPage }
+      });
+      
+      // Cache the response
+      apiCache.set(cacheKey, response.data);
+      console.log(`💾 Cached contacts page ${page}`);
+      
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching contacts page ${page}:`, error);
       throw error;
     }
   }
