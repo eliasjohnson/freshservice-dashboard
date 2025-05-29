@@ -1,54 +1,5 @@
 {
-  "node": {
-    "0782c58d6528b51c0aa845b32a2fe826788bcaf0": {
-      "workers": {
-        "app/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Feliasjohnson%2Fdev%2Ffreshservice%2Ffreshservice-dashboard%2Fapp%2Factions%2Fdashboard.ts%22%2C%5B%22debugFindAgent%22%2C%22fetchAgentList%22%2C%22getCacheStatus%22%2C%22testApiConnection%22%2C%22fetchDashboardData%22%2C%22clearDashboardCache%22%5D%5D%5D&__client_imported__=!"
-      },
-      "layer": {
-        "app/page": "rsc"
-      }
-    },
-    "33fb3714c957ada04271ea2462efab17ef21360a": {
-      "workers": {
-        "app/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Feliasjohnson%2Fdev%2Ffreshservice%2Ffreshservice-dashboard%2Fapp%2Factions%2Fdashboard.ts%22%2C%5B%22debugFindAgent%22%2C%22fetchAgentList%22%2C%22getCacheStatus%22%2C%22testApiConnection%22%2C%22fetchDashboardData%22%2C%22clearDashboardCache%22%5D%5D%5D&__client_imported__=!"
-      },
-      "layer": {
-        "app/page": "rsc"
-      }
-    },
-    "544bc96d2f0d1a36bad58c2dea4c8b29f4bd6e41": {
-      "workers": {
-        "app/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Feliasjohnson%2Fdev%2Ffreshservice%2Ffreshservice-dashboard%2Fapp%2Factions%2Fdashboard.ts%22%2C%5B%22debugFindAgent%22%2C%22fetchAgentList%22%2C%22getCacheStatus%22%2C%22testApiConnection%22%2C%22fetchDashboardData%22%2C%22clearDashboardCache%22%5D%5D%5D&__client_imported__=!"
-      },
-      "layer": {
-        "app/page": "rsc"
-      }
-    },
-    "b595d8a6f537ceb8aac9fd09249b8e3af4afb26c": {
-      "workers": {
-        "app/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Feliasjohnson%2Fdev%2Ffreshservice%2Ffreshservice-dashboard%2Fapp%2Factions%2Fdashboard.ts%22%2C%5B%22debugFindAgent%22%2C%22fetchAgentList%22%2C%22getCacheStatus%22%2C%22testApiConnection%22%2C%22fetchDashboardData%22%2C%22clearDashboardCache%22%5D%5D%5D&__client_imported__=!"
-      },
-      "layer": {
-        "app/page": "rsc"
-      }
-    },
-    "bbecb7c6807f1451f1d7a92fac0d7294110a883a": {
-      "workers": {
-        "app/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Feliasjohnson%2Fdev%2Ffreshservice%2Ffreshservice-dashboard%2Fapp%2Factions%2Fdashboard.ts%22%2C%5B%22debugFindAgent%22%2C%22fetchAgentList%22%2C%22getCacheStatus%22%2C%22testApiConnection%22%2C%22fetchDashboardData%22%2C%22clearDashboardCache%22%5D%5D%5D&__client_imported__=!"
-      },
-      "layer": {
-        "app/page": "rsc"
-      }
-    },
-    "e3760544c1b5e280a642939e7aec13f514f68456": {
-      "workers": {
-        "app/page": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Feliasjohnson%2Fdev%2Ffreshservice%2Ffreshservice-dashboard%2Fapp%2Factions%2Fdashboard.ts%22%2C%5B%22debugFindAgent%22%2C%22fetchAgentList%22%2C%22getCacheStatus%22%2C%22testApiConnection%22%2C%22fetchDashboardData%22%2C%22clearDashboardCache%22%5D%5D%5D&__client_imported__=!"
-      },
-      "layer": {
-        "app/page": "rsc"
-      }
-    }
-  },
+  "node": {},
   "edge": {},
-  "encryptionKey": "NdZ5l2sz01Fv7ipV6K41tfnfJXsAeiLVbn/rwnitguM="
+  "encryptionKey": "2GNaBtQ8Skr2H1BfWfuwd5tHPOY3tTZyuyFQEuqNros="
 }

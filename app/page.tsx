@@ -1,27 +1,26 @@
-import { Suspense } from 'react'
-import Dashboard from './components/Dashboard'
 import { fetchDashboardData } from './actions/dashboard'
+import { DashboardLayout } from './components/DashboardLayout'
+import { Overview } from './components/Overview'
 
-export default async function HomePage() {
-  let dashboardData = null;
-  let error = null;
+export default async function Home() {
+  // Fetch initial data on the server
+  let initialData = null
+  let error = null
 
   try {
-    console.log('🚀 === INITIAL SERVER-SIDE DATA FETCH ===');
-    
-    const result = await fetchDashboardData({ timeRange: 'week' });
-    
-    if (result.success && result.data) {
-      dashboardData = result.data;
-      console.log('✅ Initial data loaded successfully on server');
+    const result = await fetchDashboardData({ agentId: 'all', timeRange: 'week' })
+    if (result.success) {
+      initialData = result.data
     } else {
-      error = result.error || 'Failed to load initial data';
-      console.error('❌ Initial data load failed:', error);
+      error = result.error
     }
   } catch (err: any) {
-    error = err.message || 'Server error during initial data fetch';
-    console.error('💥 Server error during initial data fetch:', err);
+    error = err.message || 'Failed to load initial data'
   }
-  
-  return <Dashboard initialData={dashboardData} error={error} />
+
+  return (
+    <DashboardLayout initialData={initialData} error={error}>
+      <Overview />
+    </DashboardLayout>
+  )
 } 
