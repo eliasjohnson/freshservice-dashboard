@@ -1,11 +1,13 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Sidebar } from './Sidebar'
-import { ModeToggle } from './mode-toggle'
 import { Button } from './ui/button'
-import { RotateCcw, Clock, Play, Pause } from 'lucide-react'
+import { RotateCcw, Clock, Play, Pause, RefreshCw } from 'lucide-react'
 import { DashboardData, DashboardFilters, fetchDashboardData, fetchAgentList } from '../actions/dashboard'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
+import { Badge } from './ui/badge'
+import { ThemeSelector } from './theme-selector'
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -249,7 +251,7 @@ export function DashboardLayout({ children, initialData, error }: DashboardLayou
               </Button>
               
               {/* Theme Toggle */}
-              <ModeToggle />
+              <ThemeSelector />
             </div>
           </div>
 

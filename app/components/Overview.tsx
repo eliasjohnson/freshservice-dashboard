@@ -1,41 +1,11 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, PieChart, Pie, Treemap } from 'recharts'
 import { formatNumber } from '../lib/utils'
 import { DashboardData } from '../actions/dashboard'
 import { Activity, CheckCircle, AlertTriangle, Users, Clock, TrendingUp, Target } from 'lucide-react'
-
-// Color palette for charts
-const COLORS = {
-  chart: {
-    blue: 'hsl(221.2 83.2% 53.3%)',
-    green: 'hsl(142.1 76.2% 36.3%)',
-    orange: 'hsl(24.6 95% 53.1%)',
-    red: 'hsl(0 84.2% 60.2%)',
-    purple: 'hsl(262.1 83.3% 57.8%)',
-    gray: 'hsl(215.4 16.3% 46.9%)',
-    yellow: 'hsl(47.9 95.8% 53.1%)',
-    cyan: 'hsl(189.6 94.5% 42.7%)',
-  }
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  'Open': COLORS.chart.blue,
-  'Pending': COLORS.chart.orange,
-  'Hold': COLORS.chart.yellow,
-  'Waiting on Customer': COLORS.chart.purple,
-  'Resolved': COLORS.chart.green,
-  'Closed': COLORS.chart.gray,
-}
-
-const PRIORITY_COLORS: Record<string, string> = {
-  'Low': COLORS.chart.green,
-  'Medium': COLORS.chart.blue,
-  'High': COLORS.chart.orange,
-  'Urgent': COLORS.chart.red
-}
 
 interface OverviewProps {
   data?: DashboardData
@@ -43,6 +13,13 @@ interface OverviewProps {
 }
 
 export function Overview({ data, refreshKey = 0 }: OverviewProps) {
+  const [colorRefreshKey, setColorRefreshKey] = useState(0)
+
+  // Force chart re-render when refreshKey changes
+  useEffect(() => {
+    setColorRefreshKey(prev => prev + 1)
+  }, [refreshKey])
+
   // Handle case when data is not yet loaded
   if (!data) {
     return (
@@ -55,26 +32,51 @@ export function Overview({ data, refreshKey = 0 }: OverviewProps) {
     )
   }
 
+  // Static chart colors
+  const CHART_COLORS = {
+    chart1: 'hsl(12 76% 61%)',
+    chart2: 'hsl(173 58% 39%)',
+    chart3: 'hsl(197 37% 24%)',
+    chart4: 'hsl(43 74% 66%)',
+    chart5: 'hsl(27 87% 67%)'
+  }
+
+  const STATUS_COLORS: Record<string, string> = {
+    'Open': CHART_COLORS.chart2,
+    'Pending': CHART_COLORS.chart3,
+    'Hold': CHART_COLORS.chart4,
+    'Waiting on Customer': CHART_COLORS.chart5,
+    'Resolved': CHART_COLORS.chart1,
+    'Closed': 'hsl(215.4 16.3% 46.9%)',
+  }
+
+  const PRIORITY_COLORS: Record<string, string> = {
+    'Low': CHART_COLORS.chart1,
+    'Medium': CHART_COLORS.chart2,
+    'High': CHART_COLORS.chart3,
+    'Urgent': CHART_COLORS.chart4
+  }
+
   // Filter to show only active tickets for better executive view
   const activeStatusData = data.ticketsByStatus
     .filter(item => item.name !== 'Closed' && item.name !== 'Resolved')
     .map(item => ({
       ...item,
-      color: STATUS_COLORS[item.name] || COLORS.chart.gray
+      color: STATUS_COLORS[item.name] || 'hsl(215.4 16.3% 46.9%)'
     }))
 
   const priorityDataWithColors = data.ticketsByPriority.map(item => ({
     ...item,
-    color: PRIORITY_COLORS[item.name] || COLORS.chart.gray
+    color: PRIORITY_COLORS[item.name] || 'hsl(215.4 16.3% 46.9%)'
   }))
 
   // Fallback data
   const safeStatusData = activeStatusData.length > 0 ? activeStatusData : [
-    { name: 'No Data', value: 0, color: COLORS.chart.gray }
+    { name: 'No Data', value: 0, color: 'hsl(215.4 16.3% 46.9%)' }
   ]
   
   const safePriorityData = priorityDataWithColors.length > 0 ? priorityDataWithColors : [
-    { name: 'No Data', value: 0, color: COLORS.chart.gray }
+    { name: 'No Data', value: 0, color: 'hsl(215.4 16.3% 46.9%)' }
   ]
 
   // Executive KPI calculations
@@ -202,7 +204,7 @@ export function Overview({ data, refreshKey = 0 }: OverviewProps) {
             <p className="text-sm text-muted-foreground">Current workload breakdown</p>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer key={`status-${refreshKey}`} width="100%" height={300}>
+            <ResponsiveContainer key={`status-${colorRefreshKey}`} width="100%" height={300}>
               <BarChart data={safeStatusData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
@@ -225,7 +227,7 @@ export function Overview({ data, refreshKey = 0 }: OverviewProps) {
             <p className="text-sm text-muted-foreground">Urgency breakdown</p>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer key={`priority-${refreshKey}`} width="100%" height={300}>
+            <ResponsiveContainer key={`priority-${colorRefreshKey}`} width="100%" height={300}>
               <PieChart>
                 <Pie
                   data={safePriorityData}
@@ -257,7 +259,7 @@ export function Overview({ data, refreshKey = 0 }: OverviewProps) {
             <p className="text-sm text-muted-foreground">Daily volume over the past week</p>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer key={`trend-${refreshKey}`} width="100%" height={250}>
+            <ResponsiveContainer key={`trend-${colorRefreshKey}`} width="100%" height={250}>
               <LineChart data={data.ticketsTrend}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
@@ -266,9 +268,9 @@ export function Overview({ data, refreshKey = 0 }: OverviewProps) {
                 <Line 
                   type="monotone" 
                   dataKey="value" 
-                  stroke={COLORS.chart.blue} 
+                  stroke={CHART_COLORS.chart1} 
                   strokeWidth={3}
-                  dot={{ fill: COLORS.chart.blue, strokeWidth: 2, r: 5 }}
+                  dot={{ fill: CHART_COLORS.chart1, strokeWidth: 2, r: 5 }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -282,13 +284,13 @@ export function Overview({ data, refreshKey = 0 }: OverviewProps) {
             <p className="text-sm text-muted-foreground">Which teams need most support</p>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer key={`departments-${refreshKey}`} width="100%" height={250}>
+            <ResponsiveContainer key={`departments-${colorRefreshKey}`} width="100%" height={250}>
               <Treemap
                 data={data.ticketsByCategory}
                 dataKey="value"
                 aspectRatio={4/3}
                 stroke="#fff"
-                fill={COLORS.chart.blue}
+                fill={CHART_COLORS.chart2}
               >
                 <Tooltip 
                   labelFormatter={(label) => `Department: ${label}`}
@@ -307,13 +309,13 @@ export function Overview({ data, refreshKey = 0 }: OverviewProps) {
           <p className="text-sm text-muted-foreground">How quickly tickets are being resolved</p>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer key={`resolution-${refreshKey}`} width="100%" height={250}>
+          <ResponsiveContainer key={`resolution-${colorRefreshKey}`} width="100%" height={250}>
             <BarChart data={data.resolutionTimes} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
               <YAxis />
               <Tooltip formatter={(value, name) => [value, 'Tickets']} />
-              <Bar dataKey="value" fill={COLORS.chart.green} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="value" fill={CHART_COLORS.chart3} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>

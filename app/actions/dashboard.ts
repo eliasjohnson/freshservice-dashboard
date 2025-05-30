@@ -770,51 +770,92 @@ function calculateAvgResponseTime(tickets: Ticket[]): string {
 }
 
 /**
- * Calculate average first response time using conversations API for more accurate data
- * According to Freshservice API docs, conversations contain actual first response timestamps
+ * OPTIMIZED: Calculate actual first response time using conversations API with intelligent caching
+ * This matches Freshservice's official calculation methodology
+ * Only processes recent tickets to reduce API load
  */
 async function calculateActualFirstResponseTime(tickets: Ticket[]): Promise<string> {
-  console.log('🔍 === ACTUAL FIRST RESPONSE TIME ANALYSIS ===');
+  console.log('📞 === RESPONSE TIME CALCULATION ===');
+  
+  // OPTIMIZATION 1: Only process recent tickets (last 30 days) for response time
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  
+  const recentTickets = tickets.filter(ticket => {
+    if (!ticket.created_at) return false;
+    const createdAt = new Date(ticket.created_at);
+    return createdAt >= thirtyDaysAgo;
+  });
+  
+  console.log(`🎯 Processing ${recentTickets.length} recent tickets (last 30 days) out of ${tickets.length} total`);
+  
+  // OPTIMIZATION 2: Limit to maximum 15 tickets to prevent excessive API calls
+  const limitedTickets = recentTickets.slice(0, 15);
+  console.log(`⚡ Limited to ${limitedTickets.length} tickets for response time analysis`);
+  
+  if (limitedTickets.length === 0) {
+    console.log('⚠️ No recent tickets found for response time calculation');
+    return 'N/A';
+  }
   
   let totalResponseTimeMinutes = 0;
   let validResponseCount = 0;
   
-  // Sample a subset of tickets to avoid hitting rate limits
-  const sampleTickets = tickets.slice(0, 20); // Sample first 20 tickets
-  console.log(`📊 Analyzing first response times for ${sampleTickets.length} tickets (sample from ${tickets.length} total)`);
-  
-  for (const ticket of sampleTickets) {
+  // OPTIMIZATION 3: Process tickets with intelligent caching and delays
+  for (const ticket of limitedTickets) {
+    if (!ticket.created_at) continue;
+    
     try {
-      // Get conversations for this ticket
-      const conversationsResponse = await freshserviceApi.getTicketConversations(ticket.id);
-      const conversations: Conversation[] = conversationsResponse.conversations || [];
+      const createdAt = new Date(ticket.created_at);
       
-      if (conversations.length > 0) {
-        const createdAt = new Date(ticket.created_at);
+      // Check cache first
+      const cacheKey = `conversations_${ticket.id}`;
+      let conversations = apiCache.get<Conversation[]>(cacheKey);
+      
+      if (!conversations) {
+        console.log(`🌐 Cache MISS: fetching conversations for ticket ${ticket.id}...`);
         
-        // Find first agent response (not from requester)
-        const firstAgentResponse = conversations.find((conv: Conversation) => 
-          conv.user_id !== ticket.requester_id && // Not from requester
-          conv.user_id && // Has a user_id (agent)
-          conv.created_at // Has timestamp
+        // Add longer delay to respect rate limits (200ms instead of 100ms)
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        const result = await withRateLimitRetry(
+          () => freshserviceApi.getTicketConversations(Number(ticket.id))
         );
         
-        if (firstAgentResponse) {
-          const responseAt = new Date(firstAgentResponse.created_at);
-          const responseTimeMinutes = (responseAt.getTime() - createdAt.getTime()) / (1000 * 60);
-          
-          // Only include reasonable response times (1 minute to 7 days)
-          if (responseTimeMinutes > 1 && responseTimeMinutes < 10080) { // 1 min to 7 days
-            totalResponseTimeMinutes += responseTimeMinutes;
-            validResponseCount++;
-            
-            console.log(`  ✅ Ticket ${ticket.id}: ${responseTimeMinutes.toFixed(1)} minutes`);
-          }
-        }
+        conversations = result.conversations || [];
+        
+        // Cache conversations for 10 minutes
+        apiCache.set(cacheKey, conversations, 10 * 60 * 1000);
+        console.log(`💾 Cached conversations for ticket ${ticket.id}`);
       }
       
-      // Small delay to respect rate limits
-      await new Promise(resolve => setTimeout(resolve, 100));
+      if (!conversations || conversations.length === 0) {
+        console.log(`🎫 Tickets Count: ${conversations?.length || 0}`);
+        continue;
+      }
+      
+      // Find first agent response (non-private conversation from an agent)
+      const firstAgentResponse = conversations
+        .filter(conv => 
+          conv.user_id && 
+          conv.user_id !== ticket.requester_id && 
+          !conv.private &&
+          conv.created_at
+        )
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
+      
+      if (firstAgentResponse) {
+        const responseAt = new Date(firstAgentResponse.created_at);
+        const responseTimeMinutes = (responseAt.getTime() - createdAt.getTime()) / (1000 * 60);
+        
+        // Only include reasonable response times (1 minute to 7 days)
+        if (responseTimeMinutes > 1 && responseTimeMinutes < 10080) {
+          totalResponseTimeMinutes += responseTimeMinutes;
+          validResponseCount++;
+          
+          console.log(`  ✅ Ticket ${ticket.id}: ${responseTimeMinutes.toFixed(1)} minutes`);
+        }
+      }
       
     } catch (error) {
       console.warn(`⚠️ Failed to get conversations for ticket ${ticket.id}:`, error);
@@ -829,9 +870,8 @@ async function calculateActualFirstResponseTime(tickets: Ticket[]): Promise<stri
   
   const avgResponseTimeMinutes = totalResponseTimeMinutes / validResponseCount;
   console.log(`📊 Average first response time: ${avgResponseTimeMinutes.toFixed(1)} minutes (from ${validResponseCount} tickets)`);
-  console.log(`📊 This matches Freshservice's calculation methodology`);
+  console.log(`📊 This represents response time for recent activity (last 30 days)`);
   
-  // Return in same format as Freshservice (minutes)
   return `${avgResponseTimeMinutes.toFixed(1)} min`;
 }
 
@@ -1233,7 +1273,7 @@ export async function fetchAgentList(): Promise<{ success: boolean; agents?: Arr
         
         const agentsResponse = await withRateLimitRetry(async () => {
           return await freshserviceApi.getAgents(page, 100);
-        }, 3, 5000);
+        });
         
         const pageAgents = agentsResponse.agents || [];
         allAgents = [...allAgents, ...pageAgents];

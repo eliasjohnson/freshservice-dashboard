@@ -1,30 +1,12 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
 import { Button } from "./ui/button"
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts'
 import { formatNumber } from '../lib/utils'
 import { DashboardData } from '../actions/dashboard'
 import { Users, Trophy, Clock, TrendingUp, Activity, Target, AlertCircle } from 'lucide-react'
-
-const COLORS = {
-  chart: {
-    blue: 'hsl(221.2 83.2% 53.3%)',
-    green: 'hsl(142.1 76.2% 36.3%)',
-    orange: 'hsl(24.6 95% 53.1%)',
-    red: 'hsl(0 84.2% 60.2%)',
-    purple: 'hsl(262.1 83.3% 57.8%)',
-    gray: 'hsl(215.4 16.3% 46.9%)',
-  }
-}
-
-const WORKLOAD_COLORS: Record<string, string> = {
-  'Light': COLORS.chart.green,
-  'Moderate': COLORS.chart.blue,
-  'Heavy': COLORS.chart.orange,
-  'Overloaded': COLORS.chart.red
-}
 
 interface AgentPerformanceProps {
   data?: DashboardData
@@ -34,6 +16,12 @@ interface AgentPerformanceProps {
 
 export function AgentPerformance({ data, refreshKey = 0, availableAgents = [] }: AgentPerformanceProps) {
   const [selectedAgent, setSelectedAgent] = useState<number | 'all'>('all')
+  const [colorRefreshKey, setColorRefreshKey] = useState(0)
+
+  // Force chart re-render when refreshKey changes
+  useEffect(() => {
+    setColorRefreshKey(prev => prev + 1)
+  }, [refreshKey])
 
   // Handle case when data is not yet loaded
   if (!data) {
@@ -45,6 +33,22 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [] }:
         </div>
       </div>
     )
+  }
+
+  // Static chart colors
+  const CHART_COLORS = {
+    chart1: 'hsl(12 76% 61%)',
+    chart2: 'hsl(173 58% 39%)',
+    chart3: 'hsl(197 37% 24%)',
+    chart4: 'hsl(43 74% 66%)',
+    chart5: 'hsl(27 87% 67%)'
+  }
+
+  const WORKLOAD_COLORS: Record<string, string> = {
+    'Light': CHART_COLORS.chart1,
+    'Moderate': CHART_COLORS.chart2,
+    'Heavy': CHART_COLORS.chart3,
+    'Overloaded': CHART_COLORS.chart4
   }
 
   // Filter agent performance data based on selection
@@ -59,7 +63,7 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [] }:
   // Workload distribution with colors
   const workloadDataWithColors = data.agentWorkload.map(item => ({
     ...item,
-    color: WORKLOAD_COLORS[item.name] || COLORS.chart.gray
+    color: WORKLOAD_COLORS[item.name] || CHART_COLORS.chart5
   }))
 
   // Team performance metrics
@@ -253,7 +257,7 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [] }:
           </CardHeader>
           <CardContent>
             {selectedAgent === 'all' ? (
-              <ResponsiveContainer key={`team-${refreshKey}`} width="100%" height={300}>
+              <ResponsiveContainer key={`team-${colorRefreshKey}`} width="100%" height={300}>
                 <BarChart data={filteredAgentData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis 
@@ -269,11 +273,11 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [] }:
                     name === 'resolution' ? `${value}%` : value,
                     name === 'resolution' ? 'Resolution Rate' : 'Tickets'
                   ]} />
-                  <Bar dataKey="resolution" fill={COLORS.chart.green} name="resolution" />
+                  <Bar dataKey="resolution" fill={CHART_COLORS.chart1} name="resolution" />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <ResponsiveContainer key={`agent-${refreshKey}`} width="100%" height={300}>
+              <ResponsiveContainer key={`agent-${colorRefreshKey}`} width="100%" height={300}>
                 <RadarChart data={getRadarData(selectedAgentDetails)}>
                   <PolarGrid />
                   <PolarAngleAxis dataKey="metric" />
@@ -281,8 +285,8 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [] }:
                   <Radar
                     name="Performance"
                     dataKey="value"
-                    stroke={COLORS.chart.blue}
-                    fill={COLORS.chart.blue}
+                    stroke={CHART_COLORS.chart2}
+                    fill={CHART_COLORS.chart2}
                     fillOpacity={0.3}
                     strokeWidth={2}
                   />
@@ -300,7 +304,7 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [] }:
             <p className="text-sm text-muted-foreground">Current capacity across agents</p>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer key={`workload-${refreshKey}`} width="100%" height={300}>
+            <ResponsiveContainer key={`workload-${colorRefreshKey}`} width="100%" height={300}>
               <BarChart data={workloadDataWithColors} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
