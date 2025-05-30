@@ -113,25 +113,6 @@ export function OptimizedLayout({ children }: OptimizedLayoutProps) {
             <div className="flex items-center space-x-3">
               {/* Filters */}
               <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium text-muted-foreground">Agent:</span>
-                <select 
-                  value={filters.agentId}
-                  onChange={(e) => setFilters({...filters, agentId: e.target.value as any})}
-                  className="h-8 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  disabled={isLoading}
-                >
-                  <option value="all">All Agents ({availableAgents.length})</option>
-                  {availableAgents.map(agent => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.name}
-                      {agent.department ? ` - ${agent.department}` : ''}
-                      {agent.active === false ? ' (Inactive)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center space-x-2">
                 <span className="text-sm font-medium text-muted-foreground">Period:</span>
                 <select 
                   value={filters.timeRange}
