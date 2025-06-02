@@ -258,39 +258,102 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [] }:
           <CardContent>
             {selectedAgent === 'all' ? (
               <ResponsiveContainer key={`team-${colorRefreshKey}`} width="100%" height={300}>
-                <BarChart data={filteredAgentData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
+                <BarChart 
+                  data={filteredAgentData} 
+                  margin={{ 
+                    top: 20, 
+                    right: 30, 
+                    left: 20, 
+                    bottom: 80 
+                  }}
+                  barCategoryGap="20%"
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(215.4 16.3% 25.9%)" opacity={0.3} />
                   <XAxis 
                     dataKey="name" 
                     angle={-45}
                     textAnchor="end"
                     height={80}
                     interval={0}
-                    fontSize={12}
+                    fontSize={14}
+                    stroke="hsl(215.4 16.3% 65.9%)"
+                    tickLine={false}
+                    axisLine={false}
                   />
-                  <YAxis />
-                  <Tooltip formatter={(value, name) => [
-                    name === 'resolution' ? `${value}%` : value,
-                    name === 'resolution' ? 'Resolution Rate' : 'Tickets'
-                  ]} />
-                  <Bar dataKey="resolution" fill={CHART_COLORS.chart1} name="resolution" />
+                  <YAxis 
+                    fontSize={16}
+                    stroke="hsl(215.4 16.3% 65.9%)"
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <Tooltip 
+                    contentStyle={{
+                      backgroundColor: 'hsl(224 71.4% 4.1%)',
+                      border: '1px solid hsl(215.4 16.3% 25.9%)',
+                      borderRadius: '8px',
+                      color: 'white',
+                      fontSize: '16px',
+                      fontWeight: 'bold',
+                    }}
+                    formatter={(value, name) => [
+                      name === 'resolution' ? `${value}%` : value,
+                      name === 'resolution' ? 'Resolution Rate' : 'Tickets'
+                    ]} 
+                  />
+                  <Bar 
+                    dataKey="resolution" 
+                    fill={CHART_COLORS.chart1} 
+                    name="resolution" 
+                    radius={[4, 4, 0, 0]}
+                    style={{
+                      filter: 'brightness(1.1)',
+                    }}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
               <ResponsiveContainer key={`agent-${colorRefreshKey}`} width="100%" height={300}>
                 <RadarChart data={getRadarData(selectedAgentDetails)}>
-                  <PolarGrid />
-                  <PolarAngleAxis dataKey="metric" />
-                  <PolarRadiusAxis angle={90} domain={[0, 100]} />
+                  <PolarGrid 
+                    stroke="hsl(215.4 16.3% 25.9%)" 
+                    opacity={0.3}
+                  />
+                  <PolarAngleAxis 
+                    dataKey="metric" 
+                    fontSize={14}
+                    stroke="hsl(215.4 16.3% 65.9%)"
+                  />
+                  <PolarRadiusAxis 
+                    angle={90} 
+                    domain={[0, 100]} 
+                    fontSize={14}
+                    stroke="hsl(215.4 16.3% 65.9%)"
+                  />
                   <Radar
                     name="Performance"
                     dataKey="value"
                     stroke={CHART_COLORS.chart2}
                     fill={CHART_COLORS.chart2}
                     fillOpacity={0.3}
-                    strokeWidth={2}
+                    strokeWidth={3}
+                    dot={{ 
+                      r: 5, 
+                      fill: CHART_COLORS.chart2,
+                      stroke: 'white',
+                      strokeWidth: 2
+                    }}
                   />
-                  <Tooltip formatter={(value) => [`${value}%`, 'Score']} />
+                  <Tooltip 
+                    contentStyle={{
+                      backgroundColor: 'hsl(224 71.4% 4.1%)',
+                      border: '1px solid hsl(215.4 16.3% 25.9%)',
+                      borderRadius: '8px',
+                      color: 'white',
+                      fontSize: '16px',
+                      fontWeight: 'bold',
+                    }}
+                    formatter={(value) => [`${value}%`, 'Score']} 
+                  />
                 </RadarChart>
               </ResponsiveContainer>
             )}
@@ -305,14 +368,50 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [] }:
           </CardHeader>
           <CardContent>
             <ResponsiveContainer key={`workload-${colorRefreshKey}`} width="100%" height={300}>
-              <BarChart data={workloadDataWithColors} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip formatter={(value, name) => [value, 'Agents']} />
+              <BarChart 
+                data={workloadDataWithColors} 
+                margin={{ 
+                  top: 20, 
+                  right: 30, 
+                  left: 20, 
+                  bottom: 5 
+                }}
+                barCategoryGap="20%"
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(215.4 16.3% 25.9%)" opacity={0.3} />
+                <XAxis 
+                  dataKey="name" 
+                  fontSize={16}
+                  stroke="hsl(215.4 16.3% 65.9%)"
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis 
+                  fontSize={16}
+                  stroke="hsl(215.4 16.3% 65.9%)"
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <Tooltip 
+                  contentStyle={{
+                    backgroundColor: 'hsl(224 71.4% 4.1%)',
+                    border: '1px solid hsl(215.4 16.3% 25.9%)',
+                    borderRadius: '8px',
+                    color: 'white',
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                  }}
+                  formatter={(value, name) => [value, 'Agents']} 
+                />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                   {workloadDataWithColors.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.color}
+                      style={{
+                        filter: 'brightness(1.1)',
+                      }}
+                    />
                   ))}
                 </Bar>
               </BarChart>

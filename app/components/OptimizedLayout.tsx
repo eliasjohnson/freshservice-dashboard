@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { Sidebar } from './Sidebar'
 import { Button } from './ui/button'
-import { RotateCcw, Clock, Play, Pause, RefreshCw } from 'lucide-react'
+import { RotateCcw, Clock, Play, Pause, RefreshCw, Menu } from 'lucide-react'
 import { ThemeSelector } from './theme-selector'
 import { useData } from '../lib/data-context'
 
@@ -29,6 +29,17 @@ export function OptimizedLayout({ children }: OptimizedLayoutProps) {
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [refreshInterval, setRefreshInterval] = useState(5) // minutes
   const [countdown, setCountdown] = useState(0)
+  
+  // Sidebar toggle state
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
+  // Load sidebar state from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('sidebar-collapsed')
+    if (saved !== null) {
+      setSidebarCollapsed(JSON.parse(saved))
+    }
+  }, [])
 
   // Connection status based on data state
   const connectionStatus = error ? 'failed' : (isLoading ? 'testing' : 'connected')
@@ -73,17 +84,38 @@ export function OptimizedLayout({ children }: OptimizedLayoutProps) {
     }
   }
 
+  const toggleSidebar = () => {
+    const newState = !sidebarCollapsed
+    setSidebarCollapsed(newState)
+    localStorage.setItem('sidebar-collapsed', JSON.stringify(newState))
+  }
+
   return (
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
-      <Sidebar />
+      <Sidebar 
+        isCollapsed={sidebarCollapsed}
+        onToggle={toggleSidebar}
+      />
       
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
         <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="flex items-center justify-between px-6 py-4">
+          <div className="flex items-center justify-between px-6 py-3">
             <div className="flex items-center space-x-6">
+              {/* Sidebar toggle for mobile/small screens */}
+              {sidebarCollapsed && (
+                <Button
+                  onClick={toggleSidebar}
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 lg:hidden"
+                >
+                  <Menu className="h-4 w-4" />
+                </Button>
+              )}
+              
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
                   <div className={`h-2 w-2 rounded-full ${
@@ -207,7 +239,7 @@ export function OptimizedLayout({ children }: OptimizedLayoutProps) {
         </header>
         
         {/* Main Content Area */}
-        <main className={`flex-1 overflow-auto p-6 transition-opacity duration-200 ${isLoading && !dashboardData ? 'opacity-50' : 'opacity-100'}`}>
+        <main className={`flex-1 overflow-auto p-4 transition-opacity duration-200 ${isLoading && !dashboardData ? 'opacity-50' : 'opacity-100'}`}>
           {dashboardData ? (
             React.cloneElement(children as React.ReactElement, {
               data: dashboardData,
