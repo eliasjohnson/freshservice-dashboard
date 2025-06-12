@@ -97,6 +97,13 @@ const mockData: DashboardData = {
     { name: 'Fri', value: 14 },
     { name: 'Sat', value: 8 },
   ],
+  ticketLifecycleFunnel: [
+    { name: 'Created', value: 280, description: 'New tickets created', percentage: 100 },
+    { name: 'Assigned', value: 255, description: 'Tickets assigned to agents', percentage: 91 },
+    { name: 'In Progress', value: 210, description: 'Active work started', percentage: 75 },
+    { name: 'Resolved', value: 185, description: 'Issues resolved', percentage: 66 },
+    { name: 'Closed', value: 125, description: 'Tickets closed', percentage: 45 },
+  ],
   resolutionTimes: [
     { name: '< 1 hour', value: 15 },
     { name: '1-4 hours', value: 32 },
@@ -127,7 +134,49 @@ const mockData: DashboardData = {
     totalAgents: 8,
   },
   recentActivity: [],
-  requesterDepartments: []
+  requesterDepartments: [],
+  // New analytics data
+  recurringIssues: [
+    { name: 'Password Reset', value: 45, frequency: 8.2, impact: 'Low', trend: 'Stable' },
+    { name: 'Email Access Issues', value: 32, frequency: 5.8, impact: 'Medium', trend: 'Increasing' },
+    { name: 'VPN Connection Problems', value: 28, frequency: 4.1, impact: 'High', trend: 'Decreasing' },
+    { name: 'Software Installation', value: 24, frequency: 3.5, impact: 'Medium', trend: 'Stable' },
+    { name: 'Network Connectivity', value: 19, frequency: 2.8, impact: 'High', trend: 'Increasing' },
+    { name: 'Printer Issues', value: 16, frequency: 2.2, impact: 'Low', trend: 'Decreasing' },
+    { name: 'Account Lockout', value: 14, frequency: 1.9, impact: 'Medium', trend: 'Stable' },
+    { name: 'Hardware Failure', value: 12, frequency: 1.5, impact: 'Critical', trend: 'Stable' },
+  ],
+  timeBasedAnalytics: {
+    hourlyDistribution: [
+      { hour: '00', value: 2 }, { hour: '01', value: 1 }, { hour: '02', value: 1 },
+      { hour: '03', value: 0 }, { hour: '04', value: 1 }, { hour: '05', value: 2 },
+      { hour: '06', value: 5 }, { hour: '07', value: 12 }, { hour: '08', value: 28 },
+      { hour: '09', value: 35 }, { hour: '10', value: 42 }, { hour: '11', value: 38 },
+      { hour: '12', value: 25 }, { hour: '13', value: 31 }, { hour: '14', value: 44 },
+      { hour: '15', value: 39 }, { hour: '16', value: 33 }, { hour: '17', value: 22 },
+      { hour: '18', value: 8 }, { hour: '19', value: 4 }, { hour: '20', value: 3 },
+      { hour: '21', value: 2 }, { hour: '22', value: 2 }, { hour: '23', value: 1 },
+    ],
+    dailyDistribution: [
+      { day: 'Mon', value: 95 }, { day: 'Tue', value: 88 }, { day: 'Wed', value: 92 },
+      { day: 'Thu', value: 85 }, { day: 'Fri', value: 78 }, { day: 'Sat', value: 35 },
+      { day: 'Sun', value: 28 },
+    ],
+    peakHours: [
+      { time: '9:00-10:00', load: 85 },
+      { time: '14:00-15:00', load: 92 },
+      { time: '10:00-11:00', load: 78 },
+      { time: '15:00-16:00', load: 74 },
+    ],
+  },
+  geographicDistribution: [
+    { region: 'North America', value: 156, performance: 2.3, lat: 45.0, lng: -100.0 },
+    { region: 'Europe', value: 89, performance: 3.1, lat: 50.0, lng: 10.0 },
+    { region: 'Asia Pacific', value: 67, performance: 4.2, lat: 35.0, lng: 140.0 },
+    { region: 'Latin America', value: 34, performance: 3.8, lat: -15.0, lng: -60.0 },
+    { region: 'Africa', value: 22, performance: 5.1, lat: 0.0, lng: 20.0 },
+    { region: 'Middle East', value: 18, performance: 4.7, lat: 25.0, lng: 45.0 },
+  ],
 }
 
 interface DashboardProps {
@@ -192,8 +241,8 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
 
   // Auto-refresh timer effect
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null
-    let countdownInterval: NodeJS.Timeout | null = null
+    let interval: ReturnType<typeof setInterval> | null = null
+    let countdownInterval: ReturnType<typeof setInterval> | null = null
 
     if (autoRefresh && !currentError) {
       // Set up main refresh timer
@@ -788,6 +837,155 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                   />
                 </Treemap>
               </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* New Analytics Section */}
+        <div className="grid gap-4 lg:grid-cols-3 mb-6">
+          {/* Recurring Issues Analysis */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Recurring Issues</CardTitle>
+              <p className="text-sm text-muted-foreground">Most frequent problems and their trends</p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 max-h-[280px] overflow-y-auto">
+                {dashboardData.recurringIssues.map((issue, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 rounded-md border bg-card">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium truncate">{issue.name}</p>
+                        <div className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium ${
+                          issue.impact === 'Critical' ? 'bg-red-100 text-red-700' :
+                          issue.impact === 'High' ? 'bg-orange-100 text-orange-700' :
+                          issue.impact === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {issue.impact}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-xs text-muted-foreground">{issue.value} tickets</span>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xs text-muted-foreground">{issue.frequency}/week</span>
+                          <div className={`text-xs ${
+                            issue.trend === 'Increasing' ? 'text-red-600' :
+                            issue.trend === 'Decreasing' ? 'text-green-600' :
+                            'text-gray-600'
+                          }`}>
+                            {issue.trend === 'Increasing' ? '↗' : issue.trend === 'Decreasing' ? '↘' : '→'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Time-based Analytics - Heat Map */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Peak Support Hours</CardTitle>
+              <p className="text-sm text-muted-foreground">Hourly ticket distribution pattern</p>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer key={`heatmap-${refreshKey}`} width="100%" height={250}>
+                <BarChart data={dashboardData.timeBasedAnalytics.hourlyDistribution.filter((_, i) => i >= 6 && i <= 18)}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey="hour" 
+                    fontSize={10}
+                    tickFormatter={(value) => `${value}:00`}
+                  />
+                  <YAxis fontSize={10} />
+                  <Tooltip 
+                    formatter={(value) => [`${value} tickets`, 'Volume']}
+                    labelFormatter={(label) => `${label}:00 - ${label}:59`}
+                  />
+                  <Bar dataKey="value" radius={[2, 2, 0, 0]}>
+                    {dashboardData.timeBasedAnalytics.hourlyDistribution.filter((_, i) => i >= 6 && i <= 18).map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={
+                        entry.value >= 40 ? COLORS.chart.red :    // Peak hours
+                        entry.value >= 30 ? COLORS.chart.orange : // High hours  
+                        entry.value >= 20 ? COLORS.chart.blue :   // Medium hours
+                        COLORS.chart.green                        // Low hours
+                      } />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              
+              {/* Peak Hours Summary */}
+              <div className="mt-3 pt-3 border-t">
+                <p className="text-xs font-medium mb-2">Peak Hours:</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {dashboardData.timeBasedAnalytics.peakHours.slice(0, 4).map((peak, index) => (
+                    <div key={index} className="text-xs">
+                      <span className="font-medium">{peak.time}</span>
+                      <span className="text-muted-foreground ml-1">({peak.load}%)</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Geographic Distribution */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Geographic Distribution</CardTitle>
+              <p className="text-sm text-muted-foreground">Tickets by region and performance</p>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer key={`geographic-${refreshKey}`} width="100%" height={180}>
+                <BarChart 
+                  data={dashboardData.geographicDistribution}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey="region" 
+                    angle={-45}
+                    textAnchor="end"
+                    height={60}
+                    interval={0}
+                    fontSize={10}
+                  />
+                  <YAxis fontSize={10} />
+                  <Tooltip 
+                    formatter={(value, name) => [
+                      name === 'value' ? `${value} tickets` : `${value}h avg`,
+                      name === 'value' ? 'Ticket Count' : 'Avg Resolution'
+                    ]}
+                  />
+                  <Bar dataKey="value" fill={COLORS.chart.blue} radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+              
+              {/* Performance Summary */}
+              <div className="mt-3 pt-3 border-t">
+                <p className="text-xs font-medium mb-2">Performance (Avg Resolution):</p>
+                <div className="space-y-1">
+                  {dashboardData.geographicDistribution
+                    .sort((a, b) => a.performance - b.performance)
+                    .slice(0, 3)
+                    .map((region, index) => (
+                    <div key={index} className="flex justify-between text-xs">
+                      <span className="truncate">{region.region}</span>
+                      <span className={`font-medium ${
+                        region.performance <= 3 ? 'text-green-600' :
+                        region.performance <= 4 ? 'text-yellow-600' :
+                        'text-red-600'
+                      }`}>
+                        {region.performance}h
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>

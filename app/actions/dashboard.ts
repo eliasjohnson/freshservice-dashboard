@@ -8,6 +8,12 @@ export interface DashboardData {
   ticketsByStatus: Array<{ name: string; value: number }>;
   ticketsByPriority: Array<{ name: string; value: number }>;
   ticketsTrend: Array<{ name: string; value: number }>;
+  ticketLifecycleFunnel: Array<{ 
+    name: string; 
+    value: number; 
+    description: string;
+    percentage: number;
+  }>;
   agentPerformance: Array<{ 
     id: number;
     name: string; 
@@ -35,6 +41,26 @@ export interface DashboardData {
   agentWorkload: Array<{ name: string; value: number }>;
   recentActivity: Array<{ id: number; subject: string; type: string; time: string }>;
   requesterDepartments: Array<{ name: string; value: number }>;
+  // New analytics for enhanced insights
+  recurringIssues: Array<{ 
+    name: string; 
+    value: number; 
+    frequency: number;
+    impact: 'Low' | 'Medium' | 'High' | 'Critical';
+    trend: 'Increasing' | 'Stable' | 'Decreasing';
+  }>;
+  timeBasedAnalytics: {
+    hourlyDistribution: Array<{ hour: string; value: number }>;
+    dailyDistribution: Array<{ day: string; value: number }>;
+    peakHours: Array<{ time: string; load: number }>;
+  };
+  geographicDistribution: Array<{ 
+    region: string; 
+    value: number;
+    performance: number; // Average resolution time in hours
+    lat?: number;
+    lng?: number;
+  }>;
 }
 
 // Filtering options interface
@@ -378,28 +404,150 @@ function createTicketsByDepartmentChartData(tickets: Ticket[], departments: Depa
 }
 
 /**
- * Create weekly trend data
+ * Create ticket lifecycle funnel data
  */
-function createTicketsTrendChartData(tickets: Ticket[]): Array<{ name: string; value: number }> {
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const dayCounts: Record<string, number> = days.reduce((acc, day) => ({...acc, [day]: 0}), {});
+function createTicketLifecycleFunnelData(tickets: Ticket[]): Array<{ 
+  name: string; 
+  value: number; 
+  description: string;
+  percentage: number;
+}> {
+  const totalTickets = tickets.length;
   
-  // Get tickets from the last 7 days
-  const oneWeekAgo = new Date();
-  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+  if (totalTickets === 0) {
+    return [];
+  }
   
-  tickets.forEach(ticket => {
-    const createdAt = new Date(ticket.created_at);
-    if (createdAt >= oneWeekAgo) {
-      const day = days[createdAt.getDay()];
-      dayCounts[day]++;
+  // Simplified 3-stage funnel
+  const submitted = totalTickets; // All tickets start here
+  // In Progress = Open + Pending + Waiting on Customer + On Hold
+  const inProgress = tickets.filter(t => [2, 3, 6, 8].includes(t.status)).length;
+  // Resolved = Resolved + Closed combined
+  const resolved = tickets.filter(t => [4, 5].includes(t.status)).length;
+  
+  return [
+    {
+      name: 'Submitted',
+      value: submitted,
+      description: 'Total tickets created',
+      percentage: 100
+    },
+    {
+      name: 'In Progress',
+      value: inProgress,
+      description: 'Being worked on',
+      percentage: Math.round((inProgress / submitted) * 100)
+    },
+    {
+      name: 'Resolved',
+      value: resolved,
+      description: 'Completed tickets',
+      percentage: Math.round((resolved / submitted) * 100)
     }
-  });
-  
-  return days.map(day => ({
-    name: day,
-    value: dayCounts[day]
-  }));
+  ];
+}
+
+/**
+ * Create dynamic trend data based on time period
+ */
+function createTicketsTrendChartData(tickets: Ticket[], timeRange: string): Array<{ name: string; value: number }> {
+  switch (timeRange) {
+    case 'today': {
+      // Show last 24 hours in 4-hour blocks
+      const blocks = ['0-4h', '4-8h', '8-12h', '12-16h', '16-20h', '20-24h'];
+      const blockCounts: Record<string, number> = blocks.reduce((acc, block) => ({...acc, [block]: 0}), {});
+      
+      const twentyFourHoursAgo = new Date();
+      twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+      
+      tickets.forEach(ticket => {
+        const createdAt = new Date(ticket.created_at);
+        if (createdAt >= twentyFourHoursAgo) {
+          const hoursDiff = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
+          const blockIndex = Math.floor(hoursDiff / 4);
+          if (blockIndex >= 0 && blockIndex < blocks.length) {
+            blockCounts[blocks[blocks.length - 1 - blockIndex]]++;
+          }
+        }
+      });
+      
+      return blocks.map(block => ({
+        name: block,
+        value: blockCounts[block]
+      }));
+    }
+    
+    case 'week': {
+      // Show last 7 days
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const dayCounts: Record<string, number> = days.reduce((acc, day) => ({...acc, [day]: 0}), {});
+      
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      
+      tickets.forEach(ticket => {
+        const createdAt = new Date(ticket.created_at);
+        if (createdAt >= oneWeekAgo) {
+          const day = days[createdAt.getDay()];
+          dayCounts[day]++;
+        }
+      });
+      
+      return days.map(day => ({
+        name: day,
+        value: dayCounts[day]
+      }));
+    }
+    
+    case 'month': {
+      // Show last 30 days in weeks
+      const weeks = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+      const weekCounts: Record<string, number> = weeks.reduce((acc, week) => ({...acc, [week]: 0}), {});
+      
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      tickets.forEach(ticket => {
+        const createdAt = new Date(ticket.created_at);
+        if (createdAt >= thirtyDaysAgo) {
+          const daysDiff = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+          const weekIndex = Math.floor(daysDiff / 7);
+          if (weekIndex >= 0 && weekIndex < weeks.length) {
+            weekCounts[weeks[weeks.length - 1 - weekIndex]]++;
+          }
+        }
+      });
+      
+      return weeks.map(week => ({
+        name: week,
+        value: weekCounts[week]
+      }));
+    }
+    
+    default: {
+      // Quarter view - show by month
+      const months = ['Month 1', 'Month 2', 'Month 3'];
+      const monthCounts: Record<string, number> = months.reduce((acc, month) => ({...acc, [month]: 0}), {});
+      
+      const threeMonthsAgo = new Date();
+      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+      
+      tickets.forEach(ticket => {
+        const createdAt = new Date(ticket.created_at);
+        if (createdAt >= threeMonthsAgo) {
+          const monthsDiff = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24 * 30));
+          if (monthsDiff >= 0 && monthsDiff < months.length) {
+            monthCounts[months[months.length - 1 - monthsDiff]]++;
+          }
+        }
+      });
+      
+      return months.map(month => ({
+        name: month,
+        value: monthCounts[month]
+      }));
+    }
+  }
 }
 
 /**
@@ -565,10 +713,17 @@ function createAgentPerformanceData(tickets: Ticket[], agents: Agent[]): Array<{
         agentMap[ticket.responder_id].resolved++;
       }
 
-      // Add response time if available
-      if (ticket.stats?.response_time) {
-        agentMap[ticket.responder_id].totalResponseTime += ticket.stats.response_time;
-        agentMap[ticket.responder_id].responseCount++;
+      // Calculate estimated response time from created_at vs updated_at for resolved tickets
+      if (RESOLVED_STATUSES.includes(ticket.status) && ticket.created_at && ticket.updated_at) {
+        const created = new Date(ticket.created_at);
+        const resolved = new Date(ticket.updated_at);
+        const responseTimeHours = (resolved.getTime() - created.getTime()) / (1000 * 60 * 60);
+        
+        // Only include reasonable response times (1 minute to 7 days)
+        if (responseTimeHours > 0.016 && responseTimeHours < 168) {
+          agentMap[ticket.responder_id].totalResponseTime += responseTimeHours;
+          agentMap[ticket.responder_id].responseCount++;
+        }
       }
     }
   });
@@ -582,7 +737,16 @@ function createAgentPerformanceData(tickets: Ticket[], agents: Agent[]): Array<{
     .map(agent => {
       const resolutionRate = agent.tickets > 0 ? Math.round((agent.resolved / agent.tickets) * 100) : 0;
       const avgResponseTime = agent.responseCount > 0 
-        ? `${(agent.totalResponseTime / agent.responseCount / 60).toFixed(1)}h` 
+        ? (() => {
+            const avgHours = agent.totalResponseTime / agent.responseCount;
+            if (avgHours < 1) {
+              return `${Math.round(avgHours * 60)}min`;
+            } else if (avgHours < 24) {
+              return `${avgHours.toFixed(1)}h`;
+            } else {
+              return `${(avgHours / 24).toFixed(1)}d`;
+            }
+          })()
         : 'N/A';
       
       // Determine workload based on tickets compared to average
@@ -774,20 +938,13 @@ function calculateAvgResponseTime(tickets: Ticket[]): string {
  * This matches Freshservice's official calculation methodology
  * Only processes recent tickets to reduce API load
  */
-async function calculateActualFirstResponseTime(tickets: Ticket[]): Promise<string> {
+async function calculateActualFirstResponseTime(tickets: Ticket[], filters: DashboardFilters): Promise<string> {
   console.log('📞 === RESPONSE TIME CALCULATION ===');
   
-  // OPTIMIZATION 1: Only process recent tickets (last 30 days) for response time
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  // Use the same time range as the dashboard filter
+  let recentTickets = tickets; // Already filtered by time range
   
-  const recentTickets = tickets.filter(ticket => {
-    if (!ticket.created_at) return false;
-    const createdAt = new Date(ticket.created_at);
-    return createdAt >= thirtyDaysAgo;
-  });
-  
-  console.log(`🎯 Processing ${recentTickets.length} recent tickets (last 30 days) out of ${tickets.length} total`);
+  console.log(`🎯 Processing ${recentTickets.length} tickets for ${filters.timeRange} period`);
   
   // OPTIMIZATION 2: Limit to maximum 15 tickets to prevent excessive API calls
   const limitedTickets = recentTickets.slice(0, 15);
@@ -1142,7 +1299,8 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
       ticketsByStatus: createTicketsByStatusChartData(filteredTickets),
       ticketsByPriority: createTicketsByPriorityChartData(filteredTickets),
       ticketsByCategory: createTicketsByDepartmentChartData(filteredTickets, departments, contacts),
-      ticketsTrend: createTicketsTrendChartData(filteredTickets),
+      ticketsTrend: createTicketsTrendChartData(filteredTickets, filters.timeRange),
+      ticketLifecycleFunnel: createTicketLifecycleFunnelData(filteredTickets),
       resolutionTimes: createResolutionTimesData(filteredTickets),
       agentPerformance: createAgentPerformanceData(filteredTickets, agents),
       agentWorkload: createAgentWorkloadData(filteredTickets, agents),
@@ -1152,7 +1310,7 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
         // These all represent tickets that need attention from the IT team
         openTickets: filteredTickets.filter(t => ACTIVE_TICKET_STATUSES.includes(t.status)).length,
         resolvedToday: countResolvedToday(filteredTickets),
-        avgResponseTime: await calculateActualFirstResponseTime(filteredTickets),
+        avgResponseTime: await calculateActualFirstResponseTime(filteredTickets, filters),
         customerSatisfaction: '92%', // This would come from surveys/feedback in real implementation
         slaBreaches: countSLABreaches(filteredTickets),
         overdueTickets: countOverdueTickets(filteredTickets),
