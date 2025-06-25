@@ -201,8 +201,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Vercel** for seamless deployment
 - **Data Rocks** for dashboard design principles
 - **Next.js Team** for the amazing framework
-
----
-
-⭐ **Star this repo if you found it helpful!**
-# Fixed environment variables for Vercel deployment

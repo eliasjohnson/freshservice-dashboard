@@ -12,9 +12,10 @@ interface AgentPerformanceProps {
   data?: DashboardData
   refreshKey?: number
   availableAgents?: Array<{ id: number; name: string; department?: string; active?: boolean }>
+  timeRange?: string
 }
 
-export function AgentPerformance({ data, refreshKey = 0, availableAgents = [] }: AgentPerformanceProps) {
+export function AgentPerformance({ data, refreshKey = 0, availableAgents = [], timeRange = 'week' }: AgentPerformanceProps) {
   const [selectedAgent, setSelectedAgent] = useState<number | 'all'>('all')
   const [colorRefreshKey, setColorRefreshKey] = useState(0)
 
@@ -66,12 +67,17 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [] }:
     color: WORKLOAD_COLORS[item.name] || CHART_COLORS.chart5
   }))
 
-  // Team performance metrics
+  // Team performance metrics - Enhanced with comprehensive scoring
   const teamStats = {
     totalTickets: data.agentPerformance.reduce((sum, agent) => sum + agent.tickets, 0),
+    totalResolved: data.agentPerformance.reduce((sum, agent) => sum + Math.round(agent.tickets * agent.resolution / 100), 0),
     avgResolutionRate: Math.round(data.agentPerformance.reduce((sum, agent) => sum + agent.resolution, 0) / data.agentPerformance.length),
-    topPerformer: data.agentPerformance.reduce((best, agent) => 
-      agent.resolution > best.resolution ? agent : best, data.agentPerformance[0]),
+    // Calculate a composite performance score: (tickets_resolved) gives more weight to actual work done
+    topPerformer: data.agentPerformance.reduce((best, agent) => {
+      const agentResolvedTickets = Math.round(agent.tickets * agent.resolution / 100);
+      const bestResolvedTickets = Math.round(best.tickets * best.resolution / 100);
+      return agentResolvedTickets > bestResolvedTickets ? agent : best;
+    }, data.agentPerformance[0]),
     overloadedAgents: data.agentPerformance.filter(agent => agent.workload === 'Overloaded').length
   }
 
@@ -140,8 +146,8 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [] }:
               <Trophy className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{teamStats.avgResolutionRate}%</div>
-              <p className="text-xs text-muted-foreground">Average resolution rate</p>
+              <div className="text-2xl font-bold">{formatNumber(teamStats.totalResolved)}</div>
+              <p className="text-xs text-muted-foreground">Tickets resolved ({teamStats.avgResolutionRate}% rate)</p>
             </CardContent>
           </Card>
           
@@ -163,7 +169,10 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [] }:
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">{teamStats.topPerformer?.name}</div>
-              <p className="text-xs text-muted-foreground">{teamStats.topPerformer?.resolution}% resolution rate</p>
+              <p className="text-xs text-muted-foreground">
+                {Math.round(teamStats.topPerformer?.tickets * teamStats.topPerformer?.resolution / 100)} resolved 
+                ({teamStats.topPerformer?.tickets} total)
+              </p>
             </CardContent>
           </Card>
           

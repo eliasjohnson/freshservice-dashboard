@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '../lib/utils'
@@ -43,6 +43,19 @@ const sidebarItems = [
 
 export function Sidebar({ className, isCollapsed = false, onToggle }: SidebarProps) {
   const pathname = usePathname()
+  const [currentTime, setCurrentTime] = useState<string>('')
+
+  // Only set time on client side to avoid hydration errors
+  useEffect(() => {
+    setCurrentTime(new Date().toLocaleTimeString())
+    
+    // Update time every minute
+    const interval = setInterval(() => {
+      setCurrentTime(new Date().toLocaleTimeString())
+    }, 60000)
+
+    return () => clearInterval(interval)
+  }, [])
 
   return (
     <div className={cn(
@@ -128,7 +141,7 @@ export function Sidebar({ className, isCollapsed = false, onToggle }: SidebarPro
       {!isCollapsed && (
         <div className="border-t px-3 py-2">
           <div className="text-xs text-muted-foreground px-3 py-2">
-            <div>Last updated: {new Date().toLocaleTimeString()}</div>
+            <div>Last updated: {currentTime || 'Loading...'}</div>
             <div className="mt-1">Data from Freshservice API</div>
           </div>
         </div>

@@ -47,7 +47,7 @@ export function FunnelStageDetails({ data }: FunnelStageDetailsProps) {
   ]
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2 pb-1">
       {data.map((stage, index) => {
         const colors = stageColors[index % stageColors.length]
         const widthPercentage = (stage.value / maxValue) * 100
@@ -55,32 +55,32 @@ export function FunnelStageDetails({ data }: FunnelStageDetailsProps) {
         return (
           <div
             key={index}
-            className="group relative overflow-hidden rounded-lg border bg-card p-4 transition-all hover:shadow-md"
+            className="group relative overflow-hidden rounded-lg border bg-card p-3 transition-all hover:shadow-sm"
           >
             {/* Background progress bar */}
             <div 
-              className={`absolute inset-0 bg-gradient-to-r ${colors.bg} transition-all duration-500`}
+              className={`absolute inset-0 bg-gradient-to-r ${colors.bg} transition-all duration-500 pointer-events-none`}
               style={{ width: `${widthPercentage}%` }}
             />
             
             {/* Content */}
             <div className="relative flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className={`h-3 w-3 rounded-full ${colors.accent} shadow-sm`} />
-                <div>
-                  <h4 className="font-semibold text-foreground">{stage.name}</h4>
-                  <p className="text-xs text-muted-foreground">{stage.description}</p>
+              <div className="flex items-center space-x-3 flex-1 min-w-0">
+                <div className={`h-3 w-3 rounded-full ${colors.accent} shadow-sm flex-shrink-0`} />
+                <div className="min-w-0">
+                  <h4 className="font-semibold text-foreground truncate">{stage.name}</h4>
+                  <p className="text-xs text-muted-foreground truncate">{stage.description}</p>
                 </div>
               </div>
               
-                              <div className="text-right">
-                  <div className="text-lg font-bold text-foreground">{stage.value}</div>
-                  {index > 0 && (
-                    <div className={`text-sm font-medium ${colors.text}`}>
-                      {stage.percentage}%
-                    </div>
-                  )}
-                </div>
+              <div className="text-right flex-shrink-0 ml-3">
+                <div className="text-lg font-bold text-foreground">{stage.value}</div>
+                {index > 0 && (
+                  <div className={`text-sm font-medium ${colors.text}`}>
+                    {stage.percentage}%
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )

@@ -44,6 +44,18 @@ export function OptimizedLayout({ children }: OptimizedLayoutProps) {
   // Connection status based on data state
   const connectionStatus = error ? 'failed' : (isLoading ? 'testing' : 'connected')
 
+  // Auto-refresh when filters change (with debounce)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (!isLoading) {
+        console.log('🔄 Filters changed, refreshing data...', filters)
+        refreshData()
+      }
+    }, 300) // 300ms debounce
+
+    return () => clearTimeout(timeoutId)
+  }, [filters.timeRange]) // Watch for filter changes
+
   // Auto-refresh timer
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null
@@ -247,7 +259,8 @@ export function OptimizedLayout({ children }: OptimizedLayoutProps) {
               availableAgents,
               filters,
               setFilters,
-              isLoading
+              isLoading,
+              timeRange: filters.timeRange
             })
           ) : isLoading ? (
             <div className="flex items-center justify-center h-full">
