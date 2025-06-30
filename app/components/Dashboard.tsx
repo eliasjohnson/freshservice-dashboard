@@ -98,11 +98,9 @@ const mockData: DashboardData = {
     { name: 'Sat', value: 8 },
   ],
   ticketLifecycleFunnel: [
-    { name: 'Created', value: 280, description: 'New tickets created', percentage: 100 },
-    { name: 'Assigned', value: 255, description: 'Tickets assigned to agents', percentage: 91 },
-    { name: 'In Progress', value: 210, description: 'Active work started', percentage: 75 },
-    { name: 'Resolved', value: 185, description: 'Issues resolved', percentage: 66 },
-    { name: 'Closed', value: 125, description: 'Tickets closed', percentage: 45 },
+    { name: 'Submitted', value: 280, description: 'Total tickets created', percentage: 100 },
+    { name: 'Active', value: 165, description: 'Currently needing attention', percentage: 59 },
+    { name: 'Resolved', value: 115, description: 'Currently completed', percentage: 41 },
   ],
   resolutionTimes: [
     { name: '< 1 hour', value: 15 },
@@ -199,6 +197,9 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
   const [agentsLoading, setAgentsLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0) // Key to force chart re-animation
 
+  // Caching state
+  const [cachedData, setCachedData] = useState<Record<string, DashboardData>>({})
+
   // Auto-refresh functionality for TV displays
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [refreshInterval, setRefreshInterval] = useState(5) // minutes
@@ -231,13 +232,22 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (!isRefreshing) {
+        // Use cache if available for the current filter set
+        const cacheKey = `${filters.agentId}-${filters.timeRange}`
+        if (cachedData[cacheKey]) {
+          console.log(`✅ Using cached data for key: ${cacheKey}`)
+          setDashboardData(cachedData[cacheKey])
+          setRefreshKey(prev => prev + 1) // Still animate charts
+          return // Skip fetch
+        }
+        
         console.log('🔄 Filters changed, refreshing data...', filters)
         handleRefresh()
       }
     }, 300) // 300ms debounce
 
     return () => clearTimeout(timeoutId)
-  }, [filters.agentId, filters.timeRange]) // Only watch the actual filter values
+  }, [filters.agentId, filters.timeRange]) // Reruns when filters change
 
   // Auto-refresh timer effect
   useEffect(() => {
@@ -275,6 +285,11 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
     if (!initialData || currentError) {
       console.log('🎯 No initial data or error detected, fetching fresh data...')
       handleRefresh()
+    } else if (initialData) {
+      // Pre-warm the cache with initial server-side data
+      const cacheKey = `${filters.agentId}-${filters.timeRange}`
+      setCachedData(prev => ({ ...prev, [cacheKey]: initialData }))
+      console.log(`🧠 Cache pre-warmed with initial data for key: ${cacheKey}`)
     }
   }, []) // Run once on mount
 
@@ -286,6 +301,12 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
   }
 
   const handleRefresh = async (forceRefresh = false) => {
+    // If force-refreshing, clear the client-side cache
+    if (forceRefresh) {
+      console.log('💥 Force refresh: Clearing client-side cache.')
+      setCachedData({})
+    }
+      
     setIsRefreshing(true)
     setRefreshType(forceRefresh ? 'force' : 'normal') // Track which button was clicked
     setCurrentError(null)
@@ -297,6 +318,13 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
       
       if (result.success && result.data) {
         setDashboardData(result.data)
+        // Store the new data in the client-side cache
+        const cacheKey = `${filters.agentId}-${filters.timeRange}`
+        if (result.data) {
+          setCachedData(prevCache => ({ ...prevCache, [cacheKey]: result.data as DashboardData }))
+          console.log(`🧠 Stored fresh data in cache for key: ${cacheKey}`)
+        }
+        
         setIsUsingMockData(false)
         setConnectionStatus('connected')
         console.log('✅ Dashboard refreshed successfully')

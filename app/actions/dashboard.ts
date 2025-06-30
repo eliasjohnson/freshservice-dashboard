@@ -405,6 +405,7 @@ function createTicketsByDepartmentChartData(tickets: Ticket[], departments: Depa
 
 /**
  * Create ticket lifecycle funnel data
+ * Restored to original business logic: status distribution funnel
  */
 function createTicketLifecycleFunnelData(tickets: Ticket[]): Array<{ 
   name: string; 
@@ -418,11 +419,13 @@ function createTicketLifecycleFunnelData(tickets: Ticket[]): Array<{
     return [];
   }
   
-  // Simplified 3-stage funnel
-  const submitted = totalTickets; // All tickets start here
-  // In Progress = Open + Pending + Waiting on Customer + On Hold
-  const inProgress = tickets.filter(t => [2, 3, 6, 8].includes(t.status)).length;
-  // Resolved = Resolved + Closed combined
+  // RESTORED: Original status-based funnel logic
+  const submitted = totalTickets; // All tickets in the time period
+  
+  // Active = tickets currently needing attention (Open + Pending + Hold + Waiting on Customer)
+  const active = tickets.filter(t => [2, 3, 6, 8].includes(t.status)).length;
+  
+  // Resolved = tickets currently completed (Resolved + Closed)
   const resolved = tickets.filter(t => [4, 5].includes(t.status)).length;
   
   return [
@@ -433,15 +436,15 @@ function createTicketLifecycleFunnelData(tickets: Ticket[]): Array<{
       percentage: 100
     },
     {
-      name: 'In Progress',
-      value: inProgress,
-      description: 'Being worked on',
-      percentage: Math.round((inProgress / submitted) * 100)
+      name: 'Active',
+      value: active,
+      description: 'Currently needing attention',
+      percentage: Math.round((active / submitted) * 100)
     },
     {
       name: 'Resolved',
       value: resolved,
-      description: 'Completed tickets',
+      description: 'Currently completed',
       percentage: Math.round((resolved / submitted) * 100)
     }
   ];

@@ -14,7 +14,8 @@ interface FunnelChartProps {
   data: FunnelStage[]
 }
 
-const COLORS = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E42', '#EF4444']
+// Solid color palette inspired by the user's example
+const COLORS = ['#8884d8', '#83a6e3', '#8dd1e1', '#82ca9d', '#a4de6c'];
 
 export function FunnelChart({ data }: FunnelChartProps) {
   if (!data || data.length === 0) {
@@ -27,50 +28,29 @@ export function FunnelChart({ data }: FunnelChartProps) {
     )
   }
 
+  // Add solid colors to each data point for recharts to use
+  const dataWithColors = data.map((entry, index) => ({
+    ...entry,
+    fill: COLORS[index % COLORS.length],
+  }));
+
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <RechartsFC
-        width={730}
-        height={250}
-        data={data}
-      >
-        <Tooltip 
-          formatter={(value) => [`${value} tickets`, 'Count']}
-          labelFormatter={(name) => `Stage: ${name}`}
-        />
+      <RechartsFC width={730} height={250}>
+        <Tooltip />
+        
         <Funnel
           dataKey="value"
-          data={data}
-          isAnimationActive
-          paddingAngle={3}
+          data={dataWithColors}
+          isAnimationActive={true}
           nameKey="name"
         >
           <LabelList 
             position="right"
-            fill="#fff" 
+            fill="hsl(var(--foreground))" 
             stroke="none"
             dataKey="name"
-            fontSize={12}
           />
-          <LabelList 
-            position="left"
-            fill="#888" 
-            stroke="none"
-            dataKey="percentage"
-            formatter={(value: number) => `${value}%`}
-            fontSize={12}
-          />
-          {
-            data.map((entry, index) => (
-              <Funnel 
-                key={`funnel-${index}`}
-                nameKey="name"
-                dataKey="value" 
-                fill={COLORS[index % COLORS.length]} 
-                stroke={COLORS[index % COLORS.length]}
-              />
-            ))
-          }
         </Funnel>
       </RechartsFC>
     </ResponsiveContainer>

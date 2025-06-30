@@ -2,12 +2,19 @@
 
 import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, PieChart, Pie, AreaChart, Area, Legend } from 'recharts'
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, PieChart, Pie, Legend } from 'recharts'
 import { formatNumber } from '../lib/utils'
 import { DashboardData } from '../actions/dashboard'
 import { Activity, CheckCircle, AlertTriangle, Users, Clock, TrendingUp, Target } from 'lucide-react'
 import { FunnelChart } from './FunnelChart'
-import { FunnelStageDetails } from './FunnelStageDetails'
+
+const STAGE_COLORS = [
+  'hsl(221.2 83.2% 53.3%)', // blue-600
+  'hsl(215.3 78.2% 55.3%)', // blue-500
+  'hsl(210.2 73.2% 58.3%)', // blue-400
+  'hsl(160.1 66.2% 40.3%)', // green-500
+  'hsl(142.1 76.2% 36.3%)', // green-600
+]
 
 interface OverviewProps {
   data?: DashboardData
@@ -35,29 +42,30 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
     )
   }
 
-  // Static chart colors
+  // Static chart colors - vibrant and distinct for better readability
   const CHART_COLORS = {
-    chart1: 'hsl(12 76% 61%)',
-    chart2: 'hsl(173 58% 39%)',
-    chart3: 'hsl(197 37% 24%)',
-    chart4: 'hsl(43 74% 66%)',
-    chart5: 'hsl(27 87% 67%)'
+    blue: 'hsl(221.2, 83.2%, 53.3%)',
+    orange: 'hsl(24.6, 95%, 53.1%)',
+    purple: 'hsl(262.1, 83.3%, 57.8%)',
+    yellow: 'hsl(47.9, 95.8%, 53.1%)',
+    green: 'hsl(142.1, 76.2%, 36.3%)',
+    red: 'hsl(0, 84.2%, 60.2%)',
   }
 
   const STATUS_COLORS: Record<string, string> = {
-    'Open': CHART_COLORS.chart2,
-    'Pending': CHART_COLORS.chart3,
-    'Hold': CHART_COLORS.chart4,
-    'Waiting on Customer': CHART_COLORS.chart5,
-    'Resolved': CHART_COLORS.chart1,
-    'Closed': 'hsl(215.4 16.3% 46.9%)',
+    'Open': CHART_COLORS.blue,
+    'Pending': CHART_COLORS.orange,
+    'Hold': CHART_COLORS.yellow,
+    'Waiting on Customer': CHART_COLORS.purple,
+    'Resolved': CHART_COLORS.green,
+    'Closed': 'hsl(215.4, 16.3%, 46.9%)',
   }
 
   const PRIORITY_COLORS: Record<string, string> = {
-    'Low': CHART_COLORS.chart1,
-    'Medium': CHART_COLORS.chart2,
-    'High': CHART_COLORS.chart3,
-    'Urgent': CHART_COLORS.chart4
+    'Low': CHART_COLORS.green,
+    'Medium': CHART_COLORS.blue,
+    'High': CHART_COLORS.orange,
+    'Urgent': CHART_COLORS.red,
   }
 
   // Filter to show only active tickets for better executive view
@@ -288,34 +296,30 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                   <Line 
                     type="monotone" 
                     dataKey="Waiting on Customer" 
-                    stroke={CHART_COLORS.chart5} 
+                    stroke={STATUS_COLORS['Waiting on Customer']} 
                     strokeWidth={2}
-                    dot={{ fill: CHART_COLORS.chart5, strokeWidth: 2, r: 3 }}
-                    activeDot={{ r: 5 }}
+                    dot={false}
                   />
                   <Line 
                     type="monotone" 
                     dataKey="Hold" 
-                    stroke={CHART_COLORS.chart4} 
+                    stroke={STATUS_COLORS['Hold']} 
                     strokeWidth={2}
-                    dot={{ fill: CHART_COLORS.chart4, strokeWidth: 2, r: 3 }}
-                    activeDot={{ r: 5 }}
+                    dot={false}
                   />
                   <Line 
                     type="monotone" 
                     dataKey="Pending" 
-                    stroke={CHART_COLORS.chart1} 
+                    stroke={STATUS_COLORS['Pending']} 
                     strokeWidth={2}
-                    dot={{ fill: CHART_COLORS.chart1, strokeWidth: 2, r: 3 }}
-                    activeDot={{ r: 5 }}
+                    dot={false}
                   />
                   <Line 
                     type="monotone" 
                     dataKey="Open" 
-                    stroke={CHART_COLORS.chart2} 
+                    stroke={STATUS_COLORS['Open']} 
                     strokeWidth={2}
-                    dot={{ fill: CHART_COLORS.chart2, strokeWidth: 2, r: 3 }}
-                    activeDot={{ r: 5 }}
+                    dot={false}
                   />
                   <Legend 
                     wrapperStyle={{
@@ -336,12 +340,54 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
           <Card className="dark:bg-slate-950/50 border-slate-800 h-[320px]">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-medium">Stage Details</CardTitle>
-              <p className="text-xs text-muted-foreground">Breakdown by funnel stage</p>
+              <p className="text-xs text-muted-foreground">Detailed breakdown of the ticket funnel</p>
             </CardHeader>
-            <CardContent className="p-0">
-              <div className="h-[260px] overflow-y-auto overflow-x-hidden px-3 pt-2 pb-2 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
-                <FunnelStageDetails data={data.ticketLifecycleFunnel} />
-              </div>
+            <CardContent className="overflow-y-auto h-[260px] px-4 pt-2 pb-2">
+              <ul className="space-y-3">
+                {data.ticketLifecycleFunnel.map((stage, index) => {
+                  // For status-based funnel, show conversion rates instead of traditional drop-offs
+                  let conversionInfo = null;
+                  
+                  if (index === 1) { // Active stage
+                    const conversionRate = data.ticketLifecycleFunnel[0].value > 0 
+                      ? (stage.value / data.ticketLifecycleFunnel[0].value) * 100 
+                      : 0;
+                    conversionInfo = {
+                      text: `${conversionRate.toFixed(1)}% of submitted tickets`,
+                      color: conversionRate > 70 ? 'text-orange-400' : 'text-muted-foreground'
+                    };
+                  } else if (index === 2) { // Resolved stage
+                    const resolutionRate = data.ticketLifecycleFunnel[0].value > 0 
+                      ? (stage.value / data.ticketLifecycleFunnel[0].value) * 100 
+                      : 0;
+                    conversionInfo = {
+                      text: `${resolutionRate.toFixed(1)}% completion rate`,
+                      color: resolutionRate < 50 ? 'text-red-400' : resolutionRate < 70 ? 'text-yellow-400' : 'text-green-400'
+                    };
+                  }
+
+                  return (
+                    <li key={index} className="border-b border-slate-800 pb-2 last:border-b-0">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <span 
+                            className="w-2.5 h-2.5 rounded-full mr-3 shrink-0" 
+                            style={{ backgroundColor: STAGE_COLORS[index % STAGE_COLORS.length] }}
+                          ></span>
+                          <span className="font-semibold text-sm">{stage.name}</span>
+                        </div>
+                        <span className="text-base font-bold">{formatNumber(stage.value)}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 pl-[22px]">{stage.description}</p>
+                      {conversionInfo && (
+                        <div className={`text-xs mt-1 pl-[22px] ${conversionInfo.color}`}>
+                          {conversionInfo.text}
+                        </div>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
             </CardContent>
           </Card>
 
@@ -398,7 +444,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                   <Bar 
                     dataKey="value" 
                     radius={[2, 2, 0, 0]}
-                    fill={CHART_COLORS.chart1}
+                    fill={CHART_COLORS.green}
                   >
                     {safePriorityData.map((entry, index) => (
                       <Cell 
@@ -421,26 +467,19 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
             </CardHeader>
             <CardContent className="pt-2 pb-3 px-4">
               <ResponsiveContainer key={`trend-${colorRefreshKey}`} width="100%" height={170}>
-                <AreaChart 
+                <LineChart 
                   data={data.ticketsTrend} 
                   margin={{ 
-                    top: 10, 
-                    right: 10, 
-                    left: -10, 
-                    bottom: 10 
+                    top: 20, 
+                    right: 30, 
+                    left: 20, 
+                    bottom: 20 
                   }}
                 >
-                  <defs>
-                    <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
                   <CartesianGrid 
-                    strokeDasharray="0" 
+                    strokeDasharray="3 3" 
                     stroke="hsl(var(--border))" 
-                    vertical={false}
-                    horizontalPoints={[0, 15, 30, 45, 60]}
+                    className="opacity-30"
                   />
                   <XAxis 
                     dataKey="name" 
@@ -454,44 +493,26 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                     fontSize={12}
                     tickLine={false}
                     axisLine={false}
-                    domain={[0, 'dataMax + 10']}
                   />
                   <Tooltip 
-                    content={({ active, payload, label }) => {
-                      if (active && payload && payload.length) {
-                        return (
-                          <div className="rounded-lg border bg-background p-2 shadow-sm">
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="flex flex-col">
-                                <span className="text-[0.70rem] uppercase text-muted-foreground">
-                                  {label}
-                                </span>
-                                <span className="font-bold text-muted-foreground">
-                                  {payload[0].value}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      }
-                      return null
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--background))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                     }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="value"
-                    stroke="transparent"
-                    fillOpacity={1}
-                    fill="url(#colorValue)"
+                    formatter={(value) => [value, 'Tickets']}
+                    labelFormatter={(label) => `${label}`}
                   />
                   <Line 
                     type="monotone" 
                     dataKey="value" 
-                    stroke="hsl(var(--chart-1))"
+                    stroke="hsl(var(--primary))"
                     strokeWidth={2}
                     dot={false}
                   />
-                </AreaChart>
+                </LineChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
