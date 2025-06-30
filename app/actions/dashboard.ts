@@ -1321,7 +1321,14 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
         totalAgents: filterITAgents(agents, allTickets).length // Use all tickets for agent filtering, not just filtered ones
       },
       recentActivity: [],
-      requesterDepartments: []
+      requesterDepartments: [],
+      recurringIssues: [],
+      timeBasedAnalytics: {
+        hourlyDistribution: [],
+        dailyDistribution: [],
+        peakHours: []
+      },
+      geographicDistribution: []
     };
 
     // DEBUGGING: Final stats calculation
