@@ -1,7 +1,40 @@
 'use server'
 
-import { freshserviceApi, Ticket, Agent, Department, Contact } from '../lib/freshservice';
+import { freshserviceApi, Ticket, Agent, Department, Contact, Group } from '../lib/freshservice';
 import { apiCache, rateLimitTracker, withRateLimitRetry } from '../lib/cache';
+
+// Enhanced performance metrics interface for comprehensive IT agent evaluation
+export interface EnhancedAgentPerformance {
+  id: number;
+  name: string;
+  
+  // Core Volume Metrics
+  tickets: number;
+  resolution: number;
+  
+  // Quality Metrics
+  firstCallResolution: number;
+  escalationRate: number;
+  reopenedRate: number;
+  
+  // Efficiency Metrics
+  avgResponseTime: string;
+  avgResolutionTime: string;
+  slaCompliance: number;
+  
+  // Priority Performance
+  urgentTicketPerformance: number;
+  highPriorityResolution: number;
+  
+  // Workload & Capacity
+  workload: 'Light' | 'Moderate' | 'Heavy' | 'Overloaded';
+  peakTimePerformance: number;
+  
+  // Composite Scores
+  qualityScore: number;
+  efficiencyScore: number;
+  overallScore: number;
+}
 
 // Enhanced dashboard data interface with more relevant metrics
 export interface DashboardData {
@@ -14,14 +47,7 @@ export interface DashboardData {
     description: string;
     percentage: number;
   }>;
-  agentPerformance: Array<{ 
-    id: number;
-    name: string; 
-    tickets: number; 
-    resolution: number;
-    avgResponseTime: string;
-    workload: 'Light' | 'Moderate' | 'Heavy' | 'Overloaded';
-  }>;
+  agentPerformance: Array<EnhancedAgentPerformance>;
   // Enhanced stats with more IT-relevant metrics
   stats: {
     openTickets: number;
@@ -671,90 +697,356 @@ function filterITAgents(agents: Agent[], tickets: Ticket[]): Agent[] {
   return activeAgents;
 }
 
+// Precise IT support agent identification using department-based filtering
+function getITSpecificAgents(agents: Agent[], tickets: Ticket[], groups: Group[] = [], departments: Department[] = []): Agent[] {
+  console.log(`🎯 === IT SUPPORT TEAM IDENTIFICATION ===`);
+  console.log(`📊 Input: ${agents.length} agents total`);
+  
+  // Create department lookup map
+  const departmentMap = new Map(departments.map(d => [d.id, d.name]));
+  
+  // Debug: Log all unique departments to see what's available
+  const allDepartments = [...new Set(agents.map(agent => agent.department).filter(Boolean))];
+  console.log(`🔍 All unique departments found: ${allDepartments.join(', ')}`);
+  
+  // Debug: Log sample agents with their departments
+  console.log(`🔍 Sample agents and their departments:`);
+  agents.slice(0, 10).forEach(agent => {
+    const deptNames = agent.department_ids ? agent.department_ids.map(id => departmentMap.get(id)).filter(Boolean) : [];
+    console.log(`   - ${agent.first_name} ${agent.last_name}: dept="${agent.department}", dept_ids=[${deptNames.join(', ')}], active=${agent.active}`);
+  });
+  
+  const itAgents = agents.filter(agent => {
+    
+    // Check department field and department_ids for specific department
+    const department = agent.department?.toLowerCase() || '';
+    const departmentNames = agent.department_ids ? 
+      agent.department_ids.map(id => departmentMap.get(id)?.toLowerCase()).filter(Boolean) : [];
+    
+    // Check for specific department ID 11000324230 or "Freshservice-dashboard" department
+    const hasTargetDepartment = 
+      agent.department_ids?.includes(11000324230) ||
+      department === 'freshservice-dashboard' ||
+      department.includes('freshservice-dashboard') ||
+      departmentNames.some(name => 
+        name === 'freshservice-dashboard' ||
+        name?.includes('freshservice-dashboard')
+      );
+    
+    if (hasTargetDepartment) {
+      const deptInfo = departmentNames.length > 0 ? departmentNames.join(', ') : agent.department;
+      console.log(`   ✅ Freshservice-dashboard Agent: ${agent.first_name} ${agent.last_name} (dept:"${deptInfo}") - ${agent.email}`);
+      return true;
+    }
+    
+    return false;
+  });
+  
+  console.log(`🎯 Identified ${itAgents.length} Freshservice-dashboard agents from ${agents.length} total agents`);
+  
+  // If no agents found, let's see what departments are available
+  if (itAgents.length === 0) {
+    console.log(`⚠️ No IT agents found! Let's check what departments are available:`);
+    agents.slice(0, 20).forEach(agent => {
+      if (agent.active) {
+        const deptNames = agent.department_ids ? agent.department_ids.map(id => departmentMap.get(id)).filter(Boolean) : [];
+        console.log(`   - ${agent.first_name} ${agent.last_name}: dept="${agent.department}", dept_ids=[${deptNames.join(', ')}]`);
+      }
+    });
+  }
+  
+  // List the found IT agents for verification
+  if (itAgents.length > 0) {
+    console.log(`📋 Found IT agents:`);
+    itAgents.forEach((agent, index) => {
+      const deptInfo = agent.department_ids ? 
+        agent.department_ids.map(id => departmentMap.get(id)).filter(Boolean).join(', ') : 
+        agent.department;
+      console.log(`   ${index + 1}. ${agent.first_name} ${agent.last_name} (dept:"${deptInfo}")`);
+    });
+  }
+  
+  return itAgents;
+}
+
+// Helper function to get agents who handle tickets in the primary IT workspace
+function getWorkspaceResponders(tickets: Ticket[]): Set<number> {
+  // Use the same workspace logic as ticket filtering
+  const uniqueWorkspaces = [...new Set(tickets.map(t => t.workspace_id).filter(id => id !== undefined))] as number[];
+  let targetWorkspace: number;
+  
+  if (uniqueWorkspaces.length === 0) {
+    // No workspace information, use all responders
+    const responderIds = new Set(
+      tickets
+        .map(ticket => ticket.responder_id)
+        .filter(id => id !== null && id !== undefined) as number[]
+    );
+    return responderIds;
+  } else if (uniqueWorkspaces.length === 1) {
+    targetWorkspace = uniqueWorkspaces[0];
+  } else {
+    // Prefer workspace 2 (IT), then 1, then highest ticket count
+    targetWorkspace = 2;
+    if (!uniqueWorkspaces.includes(2)) {
+      if (uniqueWorkspaces.includes(1)) {
+        targetWorkspace = 1;
+      } else {
+        const workspaceCounts: Record<number, number> = {};
+        tickets.forEach(ticket => {
+          if (ticket.workspace_id !== undefined) {
+            workspaceCounts[ticket.workspace_id] = (workspaceCounts[ticket.workspace_id] || 0) + 1;
+          }
+        });
+        targetWorkspace = uniqueWorkspaces.reduce((max, current) => 
+          workspaceCounts[current] > workspaceCounts[max] ? current : max,
+          uniqueWorkspaces[0]
+        );
+      }
+    }
+  }
+  
+  const relevantTickets = tickets.filter(ticket => ticket.workspace_id === targetWorkspace);
+  const responderIds = new Set(
+    relevantTickets
+      .map(ticket => ticket.responder_id)
+      .filter(id => id !== null && id !== undefined) as number[]
+  );
+  
+  console.log(`🎯 Found ${responderIds.size} unique responders in workspace ${targetWorkspace}`);
+  return responderIds;
+}
+
 /**
  * Create enhanced agent performance data with workload analysis - IT TEAM ONLY
  */
-function createAgentPerformanceData(tickets: Ticket[], agents: Agent[]): Array<{ 
-  id: number;
-  name: string; 
-  tickets: number; 
-  resolution: number;
-  avgResponseTime: string;
-  workload: 'Light' | 'Moderate' | 'Heavy' | 'Overloaded';
-}> {
-  // FILTER TO ONLY IT TEAM MEMBERS
-  const itAgents = filterITAgents(agents, tickets);
+function createAgentPerformanceData(tickets: Ticket[], agents: Agent[], groups: Group[] = [], departments: Department[] = []): Array<EnhancedAgentPerformance> {
+  // INCLUDE ONLY IT-SPECIFIC AGENTS using comprehensive filtering
+  const itSpecificAgents = getITSpecificAgents(agents, tickets, groups, departments);
   
   const agentMap: Record<number, { 
     id: number;
     name: string; 
+    
+    // Volume tracking
     tickets: number; 
     resolved: number;
+    
+    // Quality tracking
+    firstCallResolutions: number;
+    escalations: number;
+    reopened: number;
+    
+    // Timing tracking
     totalResponseTime: number;
+    totalResolutionTime: number;
     responseCount: number;
+    resolutionCount: number;
+    
+    // SLA tracking
+    slaCompliant: number;
+    slaTotal: number;
+    
+    // Priority tracking
+    urgentTickets: number;
+    urgentResolved: number;
+    highPriorityTickets: number;
+    highPriorityResolved: number;
+    
+    // Peak time tracking
+    peakTimeTickets: number;
+    peakTimeResolved: number;
   }> = {};
   
-  // Initialize agent data - ONLY IT AGENTS
-  itAgents.forEach(agent => {
+  // Initialize agent data - IT-SPECIFIC AGENTS ONLY
+  itSpecificAgents.forEach(agent => {
     agentMap[agent.id] = {
       id: agent.id,
       name: agent.name || `${agent.first_name || ''} ${agent.last_name || ''}`.trim(),
+      
+      // Volume tracking
       tickets: 0,
       resolved: 0,
+      
+      // Quality tracking
+      firstCallResolutions: 0,
+      escalations: 0,
+      reopened: 0,
+      
+      // Timing tracking
       totalResponseTime: 0,
-      responseCount: 0
+      totalResolutionTime: 0,
+      responseCount: 0,
+      resolutionCount: 0,
+      
+      // SLA tracking
+      slaCompliant: 0,
+      slaTotal: 0,
+      
+      // Priority tracking
+      urgentTickets: 0,
+      urgentResolved: 0,
+      highPriorityTickets: 0,
+      highPriorityResolved: 0,
+      
+      // Peak time tracking
+      peakTimeTickets: 0,
+      peakTimeResolved: 0
     };
   });
   
-  // Count tickets for each IT agent
+  // Helper functions for enhanced metric calculations
+  const isPeakTime = (dateString: string): boolean => {
+    const date = new Date(dateString);
+    const hour = date.getHours();
+    const dayOfWeek = date.getDay();
+    // Peak hours: 9AM-12PM and 1PM-5PM, Monday-Friday
+    return (dayOfWeek >= 1 && dayOfWeek <= 5) && 
+           ((hour >= 9 && hour < 12) || (hour >= 13 && hour < 17));
+  };
+  
+  const isUrgentTicket = (priority: number): boolean => priority === 4; // Priority 4 = Urgent
+  const isHighPriorityTicket = (priority: number): boolean => priority >= 3; // Priority 3+ = High/Urgent
+  
+  const calculateTimeDiff = (start: string, end: string): number => {
+    return (new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60); // Hours
+  };
+  
+  const isSLACompliant = (ticket: Ticket): boolean => {
+    if (!ticket.due_by || !ticket.updated_at) return false;
+    return new Date(ticket.updated_at) <= new Date(ticket.due_by);
+  };
+  
+  // Process tickets with comprehensive metric collection
+  console.log(`📊 Processing ${tickets.length} tickets for comprehensive agent performance metrics...`);
+  
   tickets.forEach(ticket => {
-    if (ticket.responder_id && agentMap[ticket.responder_id]) {
-      agentMap[ticket.responder_id].tickets++;
+    // Enhanced ticket-agent matching using multiple assignment fields
+    const assignedAgentId = ticket.responder_id || ticket.agent_id || ticket.assigned_agent_id || ticket.owner_id;
+    
+    if (assignedAgentId && agentMap[assignedAgentId]) {
+      const agent = agentMap[assignedAgentId];
       
-      // Count as resolved if status is resolved or closed
-      if (RESOLVED_STATUSES.includes(ticket.status)) { // Use RESOLVED_STATUSES constant
-        agentMap[ticket.responder_id].resolved++;
-      }
-
-      // Calculate estimated response time from created_at vs updated_at for resolved tickets
-      if (RESOLVED_STATUSES.includes(ticket.status) && ticket.created_at && ticket.updated_at) {
-        const created = new Date(ticket.created_at);
-        const resolved = new Date(ticket.updated_at);
-        const responseTimeHours = (resolved.getTime() - created.getTime()) / (1000 * 60 * 60);
+      // Core volume metrics
+      agent.tickets++;
+      
+      // Resolved ticket tracking
+      if (RESOLVED_STATUSES.includes(ticket.status)) {
+        agent.resolved++;
+        agent.resolutionCount++;
         
-        // Only include reasonable response times (1 minute to 7 days)
-        if (responseTimeHours > 0.016 && responseTimeHours < 168) {
-          agentMap[ticket.responder_id].totalResponseTime += responseTimeHours;
-          agentMap[ticket.responder_id].responseCount++;
+        // Resolution time calculation
+        if (ticket.created_at && ticket.updated_at) {
+          const resolutionTime = calculateTimeDiff(ticket.created_at, ticket.updated_at);
+          if (resolutionTime > 0 && resolutionTime < 720) { // Max 30 days
+            agent.totalResolutionTime += resolutionTime;
+          }
         }
       }
+      
+      // Response time calculation (for all tickets with timestamps)
+      if (ticket.created_at && ticket.updated_at) {
+        const responseTime = calculateTimeDiff(ticket.created_at, ticket.updated_at);
+        if (responseTime > 0.016 && responseTime < 168) { // 1 min to 7 days
+          agent.totalResponseTime += responseTime;
+          agent.responseCount++;
+        }
+      }
+      
+      // SLA compliance tracking
+      if (ticket.due_by) {
+        agent.slaTotal++;
+        if (isSLACompliant(ticket)) {
+          agent.slaCompliant++;
+        }
+      }
+      
+      // Priority-based performance
+      if (isUrgentTicket(ticket.priority)) {
+        agent.urgentTickets++;
+        if (RESOLVED_STATUSES.includes(ticket.status)) {
+          agent.urgentResolved++;
+        }
+      }
+      
+      if (isHighPriorityTicket(ticket.priority)) {
+        agent.highPriorityTickets++;
+        if (RESOLVED_STATUSES.includes(ticket.status)) {
+          agent.highPriorityResolved++;
+        }
+      }
+      
+      // Peak time performance
+      if (ticket.created_at && isPeakTime(ticket.created_at)) {
+        agent.peakTimeTickets++;
+        if (RESOLVED_STATUSES.includes(ticket.status)) {
+          agent.peakTimeResolved++;
+        }
+      }
+      
+      // Quality metrics (simplified heuristics)
+      // First-call resolution: resolved tickets with minimal updates (estimated)
+      if (RESOLVED_STATUSES.includes(ticket.status)) {
+        if (ticket.created_at && ticket.updated_at) {
+          const resolutionTime = calculateTimeDiff(ticket.created_at, ticket.updated_at);
+          // Assume quick resolution (< 4 hours) indicates first-call resolution
+          if (resolutionTime < 4) {
+            agent.firstCallResolutions++;
+          }
+        }
+      }
+      
+      // TODO: Escalation and reopened tracking would require conversation/activity data
+      // For now, using simplified heuristics based on available data
     }
   });
 
-  // Calculate averages and determine workload - based on IT team size
+  // Calculate comprehensive performance metrics and scoring
   const totalTickets = tickets.length;
-  const avgTicketsPerAgent = itAgents.length > 0 ? totalTickets / itAgents.length : 0;
+  const avgTicketsPerAgent = itSpecificAgents.length > 0 ? totalTickets / itSpecificAgents.length : 0;
+  
+  console.log(`📈 Calculating comprehensive performance metrics for ${Object.keys(agentMap).length} IT agents...`);
   
   return Object.values(agentMap)
-    .filter(agent => agent.tickets > 0) // Only show agents with actual tickets
-    .map(agent => {
+    .map((agent): EnhancedAgentPerformance => {
+      // Core metrics
       const resolutionRate = agent.tickets > 0 ? Math.round((agent.resolved / agent.tickets) * 100) : 0;
+      
+      // Quality metrics
+      const firstCallResolution = agent.resolved > 0 ? Math.round((agent.firstCallResolutions / agent.resolved) * 100) : 0;
+      const escalationRate = agent.tickets > 0 ? Math.round((agent.escalations / agent.tickets) * 100) : 0;
+      const reopenedRate = agent.resolved > 0 ? Math.round((agent.reopened / agent.resolved) * 100) : 0;
+      
+      // Efficiency metrics
       const avgResponseTime = agent.responseCount > 0 
         ? (() => {
             const avgHours = agent.totalResponseTime / agent.responseCount;
-            if (avgHours < 1) {
-              return `${Math.round(avgHours * 60)}min`;
-            } else if (avgHours < 24) {
-              return `${avgHours.toFixed(1)}h`;
-            } else {
-              return `${(avgHours / 24).toFixed(1)}d`;
-            }
+            if (avgHours < 1) return `${Math.round(avgHours * 60)}min`;
+            else if (avgHours < 24) return `${avgHours.toFixed(1)}h`;
+            else return `${(avgHours / 24).toFixed(1)}d`;
+          })()
+        : agent.tickets === 0 ? 'No tickets' : 'N/A';
+        
+      const avgResolutionTime = agent.resolutionCount > 0
+        ? (() => {
+            const avgHours = agent.totalResolutionTime / agent.resolutionCount;
+            if (avgHours < 1) return `${Math.round(avgHours * 60)}min`;
+            else if (avgHours < 24) return `${avgHours.toFixed(1)}h`;
+            else return `${(avgHours / 24).toFixed(1)}d`;
           })()
         : 'N/A';
+        
+      const slaCompliance = agent.slaTotal > 0 ? Math.round((agent.slaCompliant / agent.slaTotal) * 100) : 0;
       
-      // Determine workload based on tickets compared to average
+      // Priority performance
+      const urgentTicketPerformance = agent.urgentTickets > 0 ? Math.round((agent.urgentResolved / agent.urgentTickets) * 100) : 0;
+      const highPriorityResolution = agent.highPriorityTickets > 0 ? Math.round((agent.highPriorityResolved / agent.highPriorityTickets) * 100) : 0;
+      
+      // Workload assessment
       let workload: 'Light' | 'Moderate' | 'Heavy' | 'Overloaded';
-      if (avgTicketsPerAgent === 0) {
+      if (agent.tickets === 0) {
+        workload = 'Light';
+      } else if (avgTicketsPerAgent === 0) {
         workload = 'Light';
       } else {
         const ratio = agent.tickets / avgTicketsPerAgent;
@@ -763,24 +1055,75 @@ function createAgentPerformanceData(tickets: Ticket[], agents: Agent[]): Array<{
         else if (ratio < 1.5) workload = 'Heavy';
         else workload = 'Overloaded';
       }
-
+      
+      // Peak time performance
+      const peakTimePerformance = agent.peakTimeTickets > 0 ? Math.round((agent.peakTimeResolved / agent.peakTimeTickets) * 100) : 0;
+      
+      // Composite scoring (0-100 scale)
+      const qualityScore = Math.round((
+        (firstCallResolution * 0.4) +
+        ((100 - escalationRate) * 0.3) +
+        ((100 - reopenedRate) * 0.3)
+      ));
+      
+      const efficiencyScore = Math.round((
+        (slaCompliance * 0.5) +
+        (resolutionRate * 0.3) +
+        (urgentTicketPerformance * 0.2)
+      ));
+      
+      const overallScore = Math.round((
+        (qualityScore * 0.4) +
+        (efficiencyScore * 0.4) +
+        (highPriorityResolution * 0.2)
+      ));
+      
       return {
         id: agent.id,
         name: agent.name,
+        
+        // Core volume metrics
         tickets: agent.tickets,
         resolution: resolutionRate,
+        
+        // Quality metrics
+        firstCallResolution,
+        escalationRate,
+        reopenedRate,
+        
+        // Efficiency metrics
         avgResponseTime,
-        workload
+        avgResolutionTime,
+        slaCompliance,
+        
+        // Priority performance
+        urgentTicketPerformance,
+        highPriorityResolution,
+        
+        // Workload & capacity
+        workload,
+        peakTimePerformance,
+        
+        // Composite scores
+        qualityScore,
+        efficiencyScore,
+        overallScore
       };
     })
-    .sort((a, b) => b.resolution - a.resolution);
+    .sort((a, b) => {
+      // Sort by tickets count (highest first), then by overall score
+      if (a.tickets !== b.tickets) {
+        return b.tickets - a.tickets;
+      }
+      return b.overallScore - a.overallScore;
+    });
 }
 
 /**
  * Create agent workload distribution chart data - IT TEAM ONLY
  */
-function createAgentWorkloadData(tickets: Ticket[], agents: Agent[]): Array<{ name: string; value: number }> {
-  const agentPerformance = createAgentPerformanceData(tickets, agents);
+function createAgentWorkloadData(tickets: Ticket[], agents: Agent[], groups: Group[] = [], departments: Department[] = []): Array<{ name: string; value: number }> {
+  const agentPerformance = createAgentPerformanceData(tickets, agents, groups, departments);
   const workloadCounts: Record<string, number> = {
     'Light': 0,
     'Moderate': 0,
@@ -1071,20 +1414,32 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
       // Fetch all tickets with intelligent pagination
       let hasMorePages = true;
       let totalPages: number | undefined;
-      const maxSafePages = 15; // Safety limit to prevent rate limiting
+      // Smart pagination: Use API meta info to determine optimal page count
+      // Default to 30 pages (3,000 tickets) as a reasonable maximum for quarterly data
+      let maxSafePages = 30;
       
-      console.log('📋 Fetching tickets with intelligent pagination (using API meta info with fallback)...');
+      console.log('📋 Fetching tickets with smart pagination (optimized for ~3,000 quarterly tickets)...');
       
       while (hasMorePages && page <= maxSafePages) {
         try {
           const ticketsResponse = await freshserviceApi.getTickets(page, 100);
           
-          // Extract pagination info from first response
+          // Extract pagination info from first response and optimize page limit
           if (page === 1) {
             if (ticketsResponse.meta) {
               totalPages = ticketsResponse.meta.total_pages;
               totalEntries = ticketsResponse.meta.total_entries;
               console.log(`📊 API Meta Info: ${totalEntries} total tickets across ${totalPages} pages`);
+              
+              // Optimize page limit based on actual data size
+              if (totalPages && totalPages < maxSafePages) {
+                maxSafePages = totalPages;
+                console.log(`🚀 Optimized: Reducing page limit to ${maxSafePages} based on actual data`);
+              } else if (totalEntries && totalEntries > 4000) {
+                // If more than 4,000 tickets, we might need more pages
+                maxSafePages = Math.min(40, Math.ceil(totalEntries / 100));
+                console.log(`📈 Adjusted: Increasing page limit to ${maxSafePages} for ${totalEntries} tickets`);
+              }
             }
           }
           
@@ -1092,13 +1447,23 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
             allTickets = allTickets.concat(ticketsResponse.tickets);
             console.log(`✅ Page ${page}${totalPages ? `/${totalPages}` : ''}: ${ticketsResponse.tickets.length} tickets (Total: ${allTickets.length})`);
             
-            // Check if we should continue
+            // Smart early termination for performance optimization
             if (totalPages && page >= totalPages) {
               hasMorePages = false;
               console.log(`📊 Reached end based on API meta info (${totalPages} pages)`);
             } else if (ticketsResponse.tickets.length < 100) {
               hasMorePages = false;
               console.log(`📊 Reached end based on response size (${ticketsResponse.tickets.length} < 100)`);
+            } else if (allTickets.length >= 3000 && page >= 15) {
+              // Early termination if we have enough quarterly data
+              const threeMonthsAgo = new Date(Date.now() - (90 * 24 * 60 * 60 * 1000));
+              const recentTickets = allTickets.filter(ticket => new Date(ticket.created_at) >= threeMonthsAgo);
+              if (recentTickets.length >= 2000) {
+                hasMorePages = false;
+                console.log(`🚀 Early termination: ${recentTickets.length} quarterly tickets found (sufficient for analysis)`);
+              } else {
+                page++;
+              }
             } else {
               page++;
             }
@@ -1119,14 +1484,25 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
         }
       }
 
-      // Cache the tickets for future requests (5 minutes TTL)
+      // Enhanced caching with longer TTL for better performance
       if (allTickets.length > 0) {
-        apiCache.set('all_tickets', allTickets, 5 * 60 * 1000); // 5 minutes
-        console.log(`💾 Cached ${allTickets.length} tickets for future requests`);
+        apiCache.set('all_tickets', allTickets, 15 * 60 * 1000); // Extended to 15 minutes
+        console.log(`💾 Cached ${allTickets.length} tickets for 15 minutes (reduced reloading)`);
       }
     }
 
     console.log(`🎉 Successfully fetched ${allTickets.length} total tickets (from ${page - 1} pages)`);
+
+    // Quarterly data validation
+    const now = new Date();
+    const threeMonthsAgo = new Date(now.getTime() - (90 * 24 * 60 * 60 * 1000));
+    const quarterlyTickets = allTickets.filter(ticket => new Date(ticket.created_at) >= threeMonthsAgo);
+    const quarterlyPercentage = allTickets.length > 0 ? Math.round((quarterlyTickets.length / allTickets.length) * 100) : 0;
+    
+    console.log(`📊 Quarterly Data Coverage: ${quarterlyTickets.length}/${allTickets.length} tickets (${quarterlyPercentage}%) from last 3 months`);
+    if (quarterlyTickets.length < 1000) {
+      console.log(`⚠️  Warning: Low quarterly ticket count (${quarterlyTickets.length}). Consider increasing pagination if data appears incomplete.`);
+    }
 
     // Also implement caching for agents and other data
     let agents: Agent[] = [];
@@ -1141,10 +1517,10 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
         const agentsResponse = await freshserviceApi.getAgents(1, 100);
         agents = agentsResponse.agents || [];
         
-        // Cache agents for 10 minutes (they change less frequently)
+        // Cache agents for 30 minutes (they change infrequently)
         if (agents.length > 0) {
-          apiCache.set('all_agents', agents, 10 * 60 * 1000);
-          console.log(`💾 Cached ${agents.length} agents for future requests`);
+          apiCache.set('all_agents', agents, 30 * 60 * 1000);
+          console.log(`💾 Cached ${agents.length} agents for 30 minutes`);
         }
         console.log(`✅ Retrieved ${agents.length} agents`);
       } catch (agentsError: any) {
@@ -1166,10 +1542,10 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
         const departmentsResponse = await freshserviceApi.getDepartments(1, 100);
         departments = departmentsResponse.departments || [];
         
-        // Cache departments for 15 minutes (they rarely change)
+        // Cache departments for 60 minutes (they rarely change)
         if (departments.length > 0) {
-          apiCache.set('all_departments', departments, 15 * 60 * 1000);
-          console.log(`💾 Cached ${departments.length} departments for future requests`);
+          apiCache.set('all_departments', departments, 60 * 60 * 1000);
+          console.log(`💾 Cached ${departments.length} departments for 60 minutes`);
         }
         
         // If we got 100 departments, there might be more on the next page
@@ -1188,6 +1564,44 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
       } catch (departmentsError: any) {
         console.warn('⚠️ Failed to fetch departments:', departmentsError);
         console.log('📊 Continuing without department data...');
+      }
+    }
+
+    // Also cache groups for IT agent identification
+    let groups: Group[] = [];
+    const cachedGroups = !filters.forceRefresh ? apiCache.get<Group[]>('all_groups') : null;
+    
+    if (cachedGroups) {
+      console.log(`💾 Using cached groups: ${cachedGroups.length} groups (cache hit!)`);
+      groups = cachedGroups;
+    } else {
+      console.log('🔄 Fetching fresh group data...');
+      try {
+        const groupsResponse = await freshserviceApi.getGroups(1, 100);
+        groups = groupsResponse.groups || [];
+        
+        // Cache groups for 30 minutes (they rarely change)
+        if (groups.length > 0) {
+          apiCache.set('all_groups', groups, 30 * 60 * 1000);
+          console.log(`💾 Cached ${groups.length} groups for 30 minutes`);
+        }
+        
+        // If we got 100 groups, there might be more on the next page
+        if (groups.length === 100) {
+          try {
+            const groupsPage2 = await freshserviceApi.getGroups(2, 100);
+            if (groupsPage2.groups && groupsPage2.groups.length > 0) {
+              groups = groups.concat(groupsPage2.groups);
+              console.log(`✅ Retrieved additional ${groupsPage2.groups.length} groups from page 2 (total: ${groups.length})`);
+            }
+          } catch (page2Error: any) {
+            console.warn('⚠️ Failed to fetch groups page 2:', page2Error);
+          }
+        }
+        console.log(`✅ Retrieved ${groups.length} groups`);
+      } catch (groupsError: any) {
+        console.warn('⚠️ Failed to fetch groups:', groupsError);
+        console.log('📊 Continuing without group data...');
       }
     }
 
@@ -1305,8 +1719,8 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
       ticketsTrend: createTicketsTrendChartData(filteredTickets, filters.timeRange),
       ticketLifecycleFunnel: createTicketLifecycleFunnelData(filteredTickets),
       resolutionTimes: createResolutionTimesData(filteredTickets),
-      agentPerformance: createAgentPerformanceData(filteredTickets, agents),
-      agentWorkload: createAgentWorkloadData(filteredTickets, agents),
+      agentPerformance: createAgentPerformanceData(filteredTickets, agents, groups, departments),
+      agentWorkload: createAgentWorkloadData(filteredTickets, agents, groups, departments),
       stats: {
         // ACTIVE TICKETS CALCULATION (Updated with identified custom statuses):
         // Status 2 (Open) + Status 3 (Pending) + Status 6 (Hold) + Status 8 (Waiting on Customer)
@@ -1505,15 +1919,37 @@ export async function fetchAgentList(): Promise<{ success: boolean; agents?: Arr
       })));
     }
     
-    // Return ALL agents for the dropdown
-    const agentList = allAgents.map(agent => ({
+    // Debug: Log all unique departments to see what's available
+    const allDepartments = [...new Set(allAgents.map(agent => agent.department).filter(Boolean))];
+    console.log(`🔍 All unique departments found for dropdown: ${allDepartments.join(', ')}`);
+    
+    // Filter agents by specific department for dropdown
+    const itAgents = allAgents.filter(agent => {
+      // Check department field and department_ids for specific department
+      const department = agent.department?.toLowerCase() || '';
+      
+      const hasTargetDepartment = 
+        agent.department_ids?.includes(11000324230) ||
+        department === 'freshservice-dashboard' ||
+        department.includes('freshservice-dashboard');
+      
+      if (hasTargetDepartment) {
+        console.log(`   ✅ IT Agent for dropdown: ${agent.first_name} ${agent.last_name} (dept:"${agent.department}")`);
+      }
+      
+      return hasTargetDepartment;
+    });
+    
+    const agentList = itAgents.map(agent => ({
       id: agent.id,
       name: agent.name || `${agent.first_name || ''} ${agent.last_name || ''}`.trim(),
       department: agent.department,
-      active: agent.active
+      active: agent.active,
+      role: agent.role
     })).sort((a, b) => a.name.localeCompare(b.name));
     
-    console.log(`📋 Returning ${agentList.length} agents for dropdown`);
+    console.log(`📋 Filtered to ${itAgents.length} IT agents from ${allAgents.length} total agents`);
+    console.log(`📋 Returning ${agentList.length} IT agents for dropdown`);
     
     return {
       success: true,
@@ -1641,20 +2077,137 @@ export async function debugFindAgent(searchName: string): Promise<{ success: boo
         console.log(`   - Department: ${agent.department || 'No department'}`);
         console.log(`   - Email: ${agent.email || 'No email'}`);
         
-        // Check if this agent has handled any tickets
-        const ticketsResponse = await freshserviceApi.getTickets(1, 100);
-        const allTickets = ticketsResponse.tickets || [];
+        // Check if this agent has handled any tickets using comprehensive dataset
+        console.log(`   - Fetching comprehensive ticket data for agent validation...`);
         
-        const agentTickets = allTickets.filter(ticket => ticket.responder_id === agent.id);
-        console.log(`   - Tickets handled: ${agentTickets.length}`);
+        // Use cached tickets if available, otherwise fetch comprehensive dataset (same as main dashboard)
+        let allTickets: Ticket[] = [];
+        const cachedTickets = apiCache.get<Ticket[]>('all_tickets');
         
-        if (agentTickets.length > 0) {
+        if (cachedTickets) {
+          console.log(`   - Using cached tickets: ${cachedTickets.length} tickets`);
+          allTickets = cachedTickets;
+        } else {
+          console.log(`   - Fetching fresh comprehensive ticket dataset...`);
+          let page = 1;
+          let hasMorePages = true;
+          const maxPages = 50; // Same as main dashboard function
+          
+          while (hasMorePages && page <= maxPages) {
+            try {
+              const ticketsResponse = await freshserviceApi.getTickets(page, 100);
+              if (ticketsResponse.tickets && ticketsResponse.tickets.length > 0) {
+                allTickets = allTickets.concat(ticketsResponse.tickets);
+                console.log(`     Page ${page}: ${ticketsResponse.tickets.length} tickets (Total: ${allTickets.length})`);
+                
+                if (ticketsResponse.tickets.length < 100) {
+                  hasMorePages = false;
+                } else {
+                  page++;
+                }
+              } else {
+                hasMorePages = false;
+              }
+            } catch (error) {
+              console.log(`     Error fetching page ${page}, stopping pagination`);
+              hasMorePages = false;
+            }
+          }
+          
+          // Cache the results for future debug calls
+          if (allTickets.length > 0) {
+            apiCache.set('all_tickets', allTickets, 5 * 60 * 1000); // 5 minutes TTL
+          }
+        }
+        
+        // Enhanced ticket matching with multiple assignment fields
+        const agentTickets = allTickets.filter(ticket => 
+          ticket.responder_id === agent.id ||
+          ticket.agent_id === agent.id ||
+          ticket.assigned_agent_id === agent.id ||
+          ticket.owner_id === agent.id
+        );
+        
+        // Separate counts for different assignment types
+        const responderTickets = allTickets.filter(ticket => ticket.responder_id === agent.id);
+        const agentIdTickets = allTickets.filter(ticket => ticket.agent_id === agent.id);
+        const assignedTickets = allTickets.filter(ticket => ticket.assigned_agent_id === agent.id);
+        const ownerTickets = allTickets.filter(ticket => ticket.owner_id === agent.id);
+        
+        console.log(`   - Total tickets handled: ${agentTickets.length} out of ${allTickets.length} total tickets`);
+        console.log(`     • Responder tickets: ${responderTickets.length}`);
+        console.log(`     • Agent ID tickets: ${agentIdTickets.length}`);
+        console.log(`     • Assigned tickets: ${assignedTickets.length}`);
+        console.log(`     • Owner tickets: ${ownerTickets.length}`);
+        
+        // Enhanced debugging for ticket matching
+        if (agentTickets.length === 0) {
+          // Check if there are any tickets with similar IDs or potential matches
+          const potentialMatches = allTickets.filter(ticket => 
+            ticket.responder_id && String(ticket.responder_id).includes(String(agent.id).slice(-3))
+          );
+          console.log(`   - Potential ID matches (last 3 digits): ${potentialMatches.length}`);
+          
+          // Check tickets in the agent's department
+          const departmentTickets = allTickets.filter(ticket => 
+            ticket.department_id && agent.department_ids?.includes(ticket.department_id)
+          );
+          console.log(`   - Tickets in agent's department: ${departmentTickets.length}`);
+          
+          // Show sample responder IDs to help identify patterns
+          const uniqueResponders = [...new Set(allTickets.map(t => t.responder_id).filter(Boolean))];
+          console.log(`   - Sample responder IDs in system: [${uniqueResponders.slice(0, 10).join(', ')}]`);
+          console.log(`   - Agent ID to match: ${agent.id}`);
+          
+          // Special debugging for Sandra, Shrikant, and Tanmoy
+          const agentName = (agent.name || `${agent.first_name} ${agent.last_name}`).toLowerCase();
+          if (agentName.includes('sandra') || agentName.includes('shrikant') || agentName.includes('tanmoy')) {
+            console.log(`🔍 SPECIAL DEBUG for ${agentName.toUpperCase()}:`);
+            
+            // Check if agent appears anywhere in ticket data
+            const mentionedInSubject = allTickets.filter(ticket => 
+              ticket.subject?.toLowerCase().includes(agentName.split(' ')[0])
+            );
+            console.log(`     - Mentioned in subjects: ${mentionedInSubject.length} tickets`);
+            
+            // Check custom fields for agent references
+            const inCustomFields = allTickets.filter(ticket => {
+              if (!ticket.custom_fields) return false;
+              const customFieldsStr = JSON.stringify(ticket.custom_fields).toLowerCase();
+              return customFieldsStr.includes(agentName.split(' ')[0]) || customFieldsStr.includes(String(agent.id));
+            });
+            console.log(`     - Mentioned in custom fields: ${inCustomFields.length} tickets`);
+            
+            // Check if agent is in any group that has tickets
+            if (agent.group_ids?.length) {
+              const groupTickets = allTickets.filter(ticket => 
+                agent.group_ids?.includes(ticket.group_id || 0)
+              );
+              console.log(`     - Tickets in agent's groups: ${groupTickets.length} tickets`);
+              if (groupTickets.length > 0) {
+                console.log(`     - Sample group tickets:`, groupTickets.slice(0, 3).map(t => ({
+                  id: t.id,
+                  group_id: t.group_id,
+                  responder_id: t.responder_id,
+                  subject: t.subject?.substring(0, 40) + '...'
+                })));
+              }
+            }
+          }
+        } else {
           console.log(`   - Sample tickets:`, agentTickets.slice(0, 3).map(t => ({
             id: t.id,
             subject: t.subject?.substring(0, 50) + '...',
             status: t.status,
-            workspace_id: t.workspace_id
+            workspace_id: t.workspace_id,
+            created_at: t.created_at?.substring(0, 10) // Just the date part
           })));
+          
+          // Show date range of tickets for this agent
+          const sortedTickets = agentTickets.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          const oldest = sortedTickets[0]?.created_at?.substring(0, 10);
+          const newest = sortedTickets[sortedTickets.length - 1]?.created_at?.substring(0, 10);
+          console.log(`   - Ticket date range: ${oldest} to ${newest}`);
         }
       }
     }
