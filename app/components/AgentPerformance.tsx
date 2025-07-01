@@ -58,7 +58,16 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [], t
     : data.agentPerformance.filter(agent => agent.id === selectedAgent)
 
   const selectedAgentDetails = selectedAgent !== 'all' 
-    ? data.agentPerformance.find(agent => agent.id === selectedAgent)
+    ? data.agentPerformance.find(agent => agent.id === selectedAgent) || 
+      // Create placeholder data for agents with no tickets
+      (availableAgents.find(agent => agent.id === selectedAgent) ? {
+        id: selectedAgent as number,
+        name: availableAgents.find(agent => agent.id === selectedAgent)?.name || 'Unknown Agent',
+        tickets: 0,
+        resolution: 0,
+        avgResponseTime: 'No tickets',
+        workload: 'Light' as const
+      } : null)
     : null
 
   // Workload distribution with colors
@@ -125,11 +134,11 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [], t
             >
               <option value="all">All Agents</option>
               {availableAgents
-                .filter(agent => data.agentPerformance.some(perf => perf.id === agent.id))
                 .map(agent => (
                 <option key={agent.id} value={agent.id}>
                   {agent.name}
                   {agent.department ? ` - ${agent.department}` : ''}
+                  {!data.agentPerformance.some(perf => perf.id === agent.id) ? ' (No tickets)' : ''}
                 </option>
               ))}
             </select>
@@ -198,8 +207,14 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [], t
               <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatNumber(selectedAgentDetails.tickets)}</div>
-              <p className="text-xs text-muted-foreground">Total assignments</p>
+              <div className={`text-2xl font-bold ${
+                selectedAgentDetails.tickets === 0 ? 'text-gray-500' : ''
+              }`}>
+                {formatNumber(selectedAgentDetails.tickets)}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {selectedAgentDetails.tickets === 0 ? 'No tickets assigned' : 'Total assignments'}
+              </p>
             </CardContent>
           </Card>
           
@@ -210,14 +225,17 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [], t
             </CardHeader>
             <CardContent>
               <div className={`text-2xl font-bold ${
-                selectedAgentDetails.resolution >= 90 ? 'text-green-600' :
-                selectedAgentDetails.resolution >= 80 ? 'text-blue-600' :
-                selectedAgentDetails.resolution >= 70 ? 'text-orange-600' :
+                selectedAgentDetails.tickets === 0 ? 'text-gray-500' :
+                selectedAgentDetails.resolution >= 80 ? 'text-green-600' :
+                selectedAgentDetails.resolution >= 60 ? 'text-yellow-600' :
+                selectedAgentDetails.resolution >= 30 ? 'text-orange-600' :
                 'text-red-600'
               }`}>
-                {selectedAgentDetails.resolution}%
+                {selectedAgentDetails.tickets === 0 ? 'N/A' : `${selectedAgentDetails.resolution}%`}
               </div>
-              <p className="text-xs text-muted-foreground">Success rate</p>
+              <p className="text-xs text-muted-foreground">
+                {selectedAgentDetails.tickets === 0 ? 'No tickets to resolve' : 'Success rate'}
+              </p>
             </CardContent>
           </Card>
           
@@ -227,8 +245,14 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [], t
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{selectedAgentDetails.avgResponseTime}</div>
-              <p className="text-xs text-muted-foreground">Average response</p>
+              <div className={`text-2xl font-bold ${
+                selectedAgentDetails.tickets === 0 ? 'text-gray-500' : ''
+              }`}>
+                {selectedAgentDetails.avgResponseTime}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {selectedAgentDetails.tickets === 0 ? 'No response data' : 'Average response'}
+              </p>
             </CardContent>
           </Card>
           
@@ -460,9 +484,9 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [], t
                       <td className="p-4 align-middle">
                         <div className="flex items-center space-x-2">
                           <span className={`font-semibold ${
-                            agent.resolution >= 90 ? 'text-green-600' :
                             agent.resolution >= 80 ? 'text-blue-600' :
-                            agent.resolution >= 70 ? 'text-orange-600' :
+                            agent.resolution >= 60 ? 'text-green-600' :
+                            agent.resolution >= 30 ? 'text-orange-600' :
                             'text-red-600'
                           }`}>
                             {agent.resolution}%
@@ -470,9 +494,9 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [], t
                           <div className="w-16 h-2 bg-gray-200 rounded-full">
                             <div 
                               className={`h-2 rounded-full ${
-                                agent.resolution >= 90 ? 'bg-green-500' :
                                 agent.resolution >= 80 ? 'bg-blue-500' :
-                                agent.resolution >= 70 ? 'bg-orange-500' :
+                                agent.resolution >= 60 ? 'bg-green-500' :
+                                agent.resolution >= 30 ? 'bg-orange-500' :
                                 'bg-red-500'
                               }`}
                               style={{ width: `${agent.resolution}%` }}

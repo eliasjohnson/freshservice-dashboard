@@ -11,6 +11,9 @@ export interface Ticket {
   priority: number;
   requester_id: number;
   responder_id?: number;
+  agent_id?: number; // Alternative assignment field
+  assigned_agent_id?: number; // Another possible assignment field
+  owner_id?: number; // Owner field for tracking
   created_at: string;
   updated_at: string;
   source: number;
@@ -29,6 +32,10 @@ export interface Ticket {
     response_time?: number;
     resolution_time?: number;
   };
+  // Additional fields that might contain assignment info
+  association_details?: any;
+  assignments?: any[];
+  conversations?: any[]; // Might contain agent responses
 }
 
 export interface Agent {
