@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from './components/theme-provider'
 import { DataProvider } from './lib/data-context'
+import { SamlProvider } from './lib/saml-context'
 import PageTransition from './components/PageTransition'
 
 const inter = Inter({ 
@@ -24,18 +25,20 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans`}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <DataProvider>
-            <PageTransition>
-              {children}
-            </PageTransition>
-          </DataProvider>
-        </ThemeProvider>
+        <SamlProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="dark"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <DataProvider>
+              <PageTransition>
+                {children}
+              </PageTransition>
+            </DataProvider>
+          </ThemeProvider>
+        </SamlProvider>
       </body>
     </html>
   )

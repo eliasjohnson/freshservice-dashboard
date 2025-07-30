@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar'
 import { Button } from './ui/button'
 import { RotateCcw, Clock, Play, Pause, RefreshCw, Menu } from 'lucide-react'
 import { ThemeSelector } from './theme-selector'
+import { SamlAuthButton } from './SamlAuthButton'
 import { useData } from '../lib/data-context'
 
 interface OptimizedLayoutProps {
@@ -224,6 +225,9 @@ export function OptimizedLayout({ children }: OptimizedLayoutProps) {
               
               {/* Theme Toggle */}
               <ThemeSelector />
+              
+              {/* SAML Auth Button */}
+              <SamlAuthButton />
             </div>
           </div>
 
