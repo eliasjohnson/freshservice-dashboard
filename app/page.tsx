@@ -1,10 +1,13 @@
+import { AuthGuard } from './components/AuthGuard'
 import { OptimizedLayout } from './components/OptimizedLayout'
 import { Overview } from './components/Overview'
 
 export default function Home() {
   return (
-    <OptimizedLayout>
-      <Overview />
-    </OptimizedLayout>
+    <AuthGuard>
+      <OptimizedLayout>
+        <Overview />
+      </OptimizedLayout>
+    </AuthGuard>
   )
 } 
