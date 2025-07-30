@@ -32,8 +32,11 @@ export async function POST(request: NextRequest) {
       return addSecurityHeaders(response);
     }
     
-    // Basic CSRF protection (for POST from forms)
-    if (!validateReferer(request)) {
+    // CSRF protection - but allow SAML callbacks from Okta
+    const isFromOkta = request.headers.get('referer')?.includes('okta.com') || 
+                       request.headers.get('origin')?.includes('okta.com');
+    
+    if (!isFromOkta && !validateReferer(request)) {
       console.warn(`⚠️ Invalid referer for SAML callback from IP: ${clientIp}`);
       const response = NextResponse.json({ error: 'Invalid request origin' }, { status: 403 });
       return addSecurityHeaders(response);
