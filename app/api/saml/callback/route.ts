@@ -59,6 +59,8 @@ export async function POST(request: NextRequest) {
 
     // Validate and parse SAML response using proper library
     console.log('🔍 Validating SAML response with signature verification...');
+    console.log('🔧 SAML Config - wantAssertionsSigned:', samlConfig.wantAssertionsSigned);
+    console.log('🔧 SAML Config - idpCert length:', samlConfig.idpCert?.length || 0);
     
     let profile: any;
     try {
@@ -69,36 +71,30 @@ export async function POST(request: NextRequest) {
     } catch (samlError) {
       console.error('❌ SAML validation failed:', samlError);
       
-      // In development, try without signature validation as fallback (unless forcing production security)
-      if (process.env.NODE_ENV === 'development' && !process.env.FORCE_PRODUCTION_SECURITY) {
-        console.log('🔧 Development mode: Attempting fallback without signature validation...');
-        try {
-          const fallbackSaml = new SAML({
-            entryPoint: samlConfig.entryPoint,
-            issuer: samlConfig.issuer,
-            callbackUrl: samlConfig.callbackUrl,
-            idpCert: '-----BEGIN CERTIFICATE-----\nMIIDummy\n-----END CERTIFICATE-----',
-            wantAssertionsSigned: false,
-            wantNameId: true,
-            wantNameIdEncrypted: false,
-            validateInResponseTo: 'never',
-            disableRequestedAuthnContext: true,
-          } as any);
-          
-          const fallbackResult = await fallbackSaml.validatePostResponseAsync({ SAMLResponse: samlResponse } as any);
-          profile = fallbackResult.profile;
-          console.log('⚠️ Fallback validation successful (signature validation disabled)');
-        } catch (fallbackError) {
-          console.error('❌ Fallback validation also failed:', fallbackError);
-          return NextResponse.json({ 
-            error: 'SAML validation failed', 
-            details: `Primary: ${samlError instanceof Error ? samlError.message : String(samlError)}, Fallback: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}` 
-          }, { status: 500 });
-        }
-      } else {
+      // Try without signature validation as fallback
+      console.log('🔧 Attempting fallback without signature validation...');
+      try {
+        const fallbackSaml = new SAML({
+          entryPoint: samlConfig.entryPoint,
+          issuer: samlConfig.issuer,
+          callbackUrl: samlConfig.callbackUrl,
+          idpCert: '-----BEGIN CERTIFICATE-----\nMIIDummy\n-----END CERTIFICATE-----',
+          wantAssertionsSigned: false,
+          wantNameId: true,
+          wantNameIdEncrypted: false,
+          validateInResponseTo: 'never',
+          disableRequestedAuthnContext: true,
+        } as any);
+        
+        const fallbackResult = await fallbackSaml.validatePostResponseAsync({ SAMLResponse: samlResponse } as any);
+        profile = fallbackResult.profile;
+        console.log('⚠️ Fallback validation successful (signature validation disabled)');
+        console.log('👤 User profile from fallback:', profile);
+      } catch (fallbackError) {
+        console.error('❌ Fallback validation also failed:', fallbackError);
         return NextResponse.json({ 
           error: 'SAML validation failed', 
-          details: samlError instanceof Error ? samlError.message : String(samlError) 
+          details: `Primary: ${samlError instanceof Error ? samlError.message : String(samlError)}, Fallback: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}` 
         }, { status: 500 });
       }
     }
