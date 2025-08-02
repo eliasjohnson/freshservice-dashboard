@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 
 // Handle any unexpected POST requests to the root
 export async function POST(request: NextRequest) {
-  console.log('⚠️ Unexpected POST request to /', request.url)
+  console.log('⚠️ Unexpected POST request to /api')
+  console.log('📋 Headers:', Object.fromEntries(request.headers.entries()))
+  console.log('🔗 Referer:', request.headers.get('referer'))
   
   // Return a simple response instead of 404
   return NextResponse.json(
