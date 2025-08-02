@@ -140,7 +140,12 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-semibold">{formatNumber(data.stats.openTickets)}</div>
-            <p className="text-xs text-muted-foreground">Requiring attention</p>
+            <p className="text-xs text-muted-foreground">
+              {timeRange === 'today' ? 'Active today' : 
+               timeRange === 'week' ? 'From this week' : 
+               timeRange === 'month' ? 'From this month' : 
+               'From this quarter'}
+            </p>
           </CardContent>
         </Card>
         
@@ -151,7 +156,12 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-semibold text-green-500">{resolutionRate}%</div>
-            <p className="text-xs text-muted-foreground">Of all tickets resolved</p>
+            <p className="text-xs text-muted-foreground">
+              {timeRange === 'today' ? 'Resolved today' : 
+               timeRange === 'week' ? 'This week\'s rate' : 
+               timeRange === 'month' ? 'This month\'s rate' : 
+               'This quarter\'s rate'}
+            </p>
           </CardContent>
         </Card>
         
@@ -162,7 +172,12 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-semibold">{data.stats.avgResponseTime}</div>
-            <p className="text-xs text-muted-foreground">First response time</p>
+            <p className="text-xs text-muted-foreground">
+              {timeRange === 'today' ? 'Today\'s average' : 
+               timeRange === 'week' ? 'This week\'s average' : 
+               timeRange === 'month' ? 'This month\'s average' : 
+               'This quarter\'s average'}
+            </p>
           </CardContent>
         </Card>
         
@@ -179,7 +194,12 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                 <span className="text-green-500">On track</span>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">SLA compliance status</p>
+            <p className="text-xs text-muted-foreground">
+              {timeRange === 'today' ? 'Today\'s SLA status' : 
+               timeRange === 'week' ? 'This week\'s SLA' : 
+               timeRange === 'month' ? 'This month\'s SLA' : 
+               'This quarter\'s SLA'}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -212,7 +232,12 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                 <div className="space-y-1">
                   <div className="flex items-center">
                     <CheckCircle className="mr-1.5 h-3.5 w-3.5 text-green-500" />
-                    <span className="text-xs">Today's Resolutions</span>
+                    <span className="text-xs">
+                      {timeRange === 'today' ? 'Today\'s' : 
+                       timeRange === 'week' ? 'This Week\'s' : 
+                       timeRange === 'month' ? 'This Month\'s' : 
+                       'This Quarter\'s'} Resolutions
+                    </span>
                   </div>
                   <div className="text-xl font-semibold text-green-500">{formatNumber(data.stats.resolvedToday)}</div>
                 </div>
@@ -244,22 +269,16 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
             </CardContent>
           </Card>
           
-          {/* Active Tickets by Status - Stacked Line Graph */}
+          {/* Tickets by Status - Current Distribution */}
           <Card className="dark:bg-slate-950/50 border-slate-800 h-[340px]">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base font-medium">Active Tickets by Status</CardTitle>
-              <p className="text-xs text-muted-foreground">Trend of active ticket statuses over time</p>
+              <CardTitle className="text-base font-medium">Tickets by Status</CardTitle>
+              <p className="text-xs text-muted-foreground">Current status distribution for {timeRange === 'today' ? 'today' : timeRange === 'week' ? 'this week' : timeRange === 'month' ? 'this month' : 'this quarter'}</p>
             </CardHeader>
             <CardContent className="pt-2 pb-2 px-4">
-              <ResponsiveContainer key={`active-status-${colorRefreshKey}`} width="100%" height={250}>
-                <LineChart 
-                  data={data.ticketsTrend.map((item, index) => ({
-                    name: item.name,
-                    Open: Math.max(2, Math.round(item.value * 0.35)), // Different distributions for visibility
-                    Pending: Math.max(2, Math.round(item.value * 0.28 + index)), // Add index for variation
-                    Hold: Math.max(1, Math.round(item.value * 0.15)),
-                    'Waiting on Customer': Math.max(2, Math.round(item.value * 0.22))
-                  }))}
+              <ResponsiveContainer key={`status-bar-${colorRefreshKey}`} width="100%" height={250}>
+                <BarChart 
+                  data={activeStatusData}
                   margin={{ 
                     top: 10, 
                     right: 30, 
@@ -292,43 +311,15 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                       borderRadius: '6px',
                       fontSize: '12px',
                     }}
+                    formatter={(value: any) => [value, 'Tickets']}
+                    labelFormatter={(label) => `Status: ${label}`}
                   />
-                  <Line 
-                    type="monotone" 
-                    dataKey="Waiting on Customer" 
-                    stroke={STATUS_COLORS['Waiting on Customer']} 
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="Hold" 
-                    stroke={STATUS_COLORS['Hold']} 
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="Pending" 
-                    stroke={STATUS_COLORS['Pending']} 
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="Open" 
-                    stroke={STATUS_COLORS['Open']} 
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                  <Legend 
-                    wrapperStyle={{
-                      paddingTop: '10px',
-                      fontSize: '11px'
-                    }}
-                    iconType="line"
-                  />
-                </LineChart>
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    {activeStatusData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>

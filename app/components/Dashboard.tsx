@@ -804,10 +804,15 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
 
         {/* Bottom Row - Line Charts */}
         <div className="grid gap-4 lg:grid-cols-2 mb-6">
-          {/* Weekly Trend */}
+          {/* Trend Chart - Dynamic Title */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Weekly Ticket Trend</CardTitle>
+              <CardTitle className="text-lg">
+                {filters.timeRange === 'today' ? 'Today\'s Ticket Trend' :
+                 filters.timeRange === 'week' ? 'Weekly Ticket Trend' :
+                 filters.timeRange === 'month' ? 'Monthly Ticket Trend' :
+                 'Quarterly Ticket Trend'}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer key={`trend-${refreshKey}`} width="100%" height={250}>

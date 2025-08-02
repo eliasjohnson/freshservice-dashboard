@@ -28,6 +28,20 @@ export function SamlProvider({ children }: { children: React.ReactNode }) {
     // Check if user is authenticated by looking for session cookie
     const checkAuth = async () => {
       try {
+        // Check if we're in development bypass mode
+        if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === 'true') {
+          console.log('🔧 Development mode: bypassing SAML authentication');
+          setUser({
+            id: 'dev-user',
+            email: process.env.NEXT_PUBLIC_DEV_USER_EMAIL || 'dev@pattern.com',
+            firstName: 'Development',
+            lastName: 'User',
+            displayName: process.env.NEXT_PUBLIC_DEV_USER_NAME || 'Development User'
+          });
+          setIsLoading(false);
+          return;
+        }
+
         const response = await fetch('/api/saml/session');
         if (response.ok) {
           const userData = await response.json();

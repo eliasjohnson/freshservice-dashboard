@@ -31,11 +31,13 @@ const isProduction = process.env.NODE_ENV === 'production';
 const forceProductionSecurity = process.env.FORCE_PRODUCTION_SECURITY === 'true';
 const useProductionSecurity = isProduction || forceProductionSecurity;
 
-const baseUrl = process.env.SAML_ISSUER || 'https://freshservice-dashboard.vercel.app';
+const baseUrl = process.env.NODE_ENV === 'development' 
+  ? 'http://localhost:3000'
+  : (process.env.SAML_ISSUER || 'https://freshservice-dashboard.vercel.app');
 
 export const samlConfig = {
   entryPoint: process.env.SAML_ENTRY_POINT || 'https://pattern.okta.com/app/pattern_freshservicedashboard_1/exk1x7g8ko6vipqKy1d8/sso/saml',
-  issuer: process.env.SAML_SP_ENTITY_ID || 'https://freshservice-dashboard.vercel.app', // SP Entity ID - what this app identifies as
+  issuer: process.env.SAML_SP_ENTITY_ID || (process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://freshservice-dashboard.vercel.app'), // SP Entity ID - what this app identifies as
   callbackUrl: process.env.SAML_CALLBACK_URL || `${baseUrl}/api/saml/callback`,
   idpCert: formatCertificate(process.env.SAML_CERT || ''),
   wantAssertionsSigned: useProductionSecurity, // Enable signature validation in production or when testing
