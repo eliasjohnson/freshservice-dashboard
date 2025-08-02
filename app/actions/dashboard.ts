@@ -482,27 +482,45 @@ function createTicketLifecycleFunnelData(tickets: Ticket[]): Array<{
 function createTicketsTrendChartData(tickets: Ticket[], timeRange: string): Array<{ name: string; value: number }> {
   switch (timeRange) {
     case 'today': {
-      // Show last 24 hours in 4-hour blocks
-      const blocks = ['0-4h', '4-8h', '8-12h', '12-16h', '16-20h', '20-24h'];
-      const blockCounts: Record<string, number> = blocks.reduce((acc, block) => ({...acc, [block]: 0}), {});
+      // Show last 24 hours in 4-hour blocks with actual times
+      const now = new Date();
+      const blocks: Array<{name: string, start: Date, end: Date}> = [];
       
-      const twentyFourHoursAgo = new Date();
-      twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+      // Create 6 four-hour blocks going backwards from now
+      for (let i = 0; i < 6; i++) {
+        const blockEnd = new Date(now);
+        blockEnd.setHours(now.getHours() - (i * 4), 0, 0, 0);
+        const blockStart = new Date(blockEnd);
+        blockStart.setHours(blockEnd.getHours() - 4);
+        
+        // Format time range (e.g., "2PM-6PM", "10AM-2PM")
+        const startHour = blockStart.getHours();
+        const endHour = blockEnd.getHours();
+        const startLabel = startHour === 0 ? '12AM' : startHour < 12 ? `${startHour}AM` : startHour === 12 ? '12PM' : `${startHour - 12}PM`;
+        const endLabel = endHour === 0 ? '12AM' : endHour < 12 ? `${endHour}AM` : endHour === 12 ? '12PM' : `${endHour - 12}PM`;
+        
+        blocks.unshift({
+          name: `${startLabel}-${endLabel}`,
+          start: blockStart,
+          end: blockEnd
+        });
+      }
+      
+      const blockCounts: Record<string, number> = {};
+      blocks.forEach(block => blockCounts[block.name] = 0);
       
       tickets.forEach(ticket => {
         const createdAt = new Date(ticket.created_at);
-        if (createdAt >= twentyFourHoursAgo) {
-          const hoursDiff = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
-          const blockIndex = Math.floor(hoursDiff / 4);
-          if (blockIndex >= 0 && blockIndex < blocks.length) {
-            blockCounts[blocks[blocks.length - 1 - blockIndex]]++;
+        blocks.forEach(block => {
+          if (createdAt >= block.start && createdAt < block.end) {
+            blockCounts[block.name]++;
           }
-        }
+        });
       });
       
       return blocks.map(block => ({
-        name: block,
-        value: blockCounts[block]
+        name: block.name,
+        value: blockCounts[block.name]
       }));
     }
     
@@ -529,51 +547,81 @@ function createTicketsTrendChartData(tickets: Ticket[], timeRange: string): Arra
     }
     
     case 'month': {
-      // Show last 30 days in weeks
-      const weeks = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-      const weekCounts: Record<string, number> = weeks.reduce((acc, week) => ({...acc, [week]: 0}), {});
+      // Show last 4 weeks with actual date ranges
+      const now = new Date();
+      const weeks: Array<{name: string, start: Date, end: Date}> = [];
       
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      // Create 4 week periods going backwards from now
+      for (let i = 0; i < 4; i++) {
+        const weekEnd = new Date(now);
+        weekEnd.setDate(now.getDate() - (i * 7));
+        const weekStart = new Date(weekEnd);
+        weekStart.setDate(weekEnd.getDate() - 6);
+        
+        weeks.unshift({
+          name: `${weekStart.getMonth() + 1}/${weekStart.getDate()}-${weekEnd.getMonth() + 1}/${weekEnd.getDate()}`,
+          start: weekStart,
+          end: weekEnd
+        });
+      }
+      
+      const weekCounts: Record<string, number> = {};
+      weeks.forEach(week => weekCounts[week.name] = 0);
       
       tickets.forEach(ticket => {
         const createdAt = new Date(ticket.created_at);
-        if (createdAt >= thirtyDaysAgo) {
-          const daysDiff = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
-          const weekIndex = Math.floor(daysDiff / 7);
-          if (weekIndex >= 0 && weekIndex < weeks.length) {
-            weekCounts[weeks[weeks.length - 1 - weekIndex]]++;
+        weeks.forEach(week => {
+          if (createdAt >= week.start && createdAt <= week.end) {
+            weekCounts[week.name]++;
           }
-        }
+        });
       });
       
       return weeks.map(week => ({
-        name: week,
-        value: weekCounts[week]
+        name: week.name,
+        value: weekCounts[week.name]
       }));
     }
     
     default: {
-      // Quarter view - show by month
-      const months = ['Month 1', 'Month 2', 'Month 3'];
-      const monthCounts: Record<string, number> = months.reduce((acc, month) => ({...acc, [month]: 0}), {});
+      // Quarter view - show by actual month names
+      const now = new Date();
+      const months: Array<{name: string, start: Date, end: Date}> = [];
       
-      const threeMonthsAgo = new Date();
-      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+      // Create 3 month periods going backwards from now
+      for (let i = 0; i < 3; i++) {
+        const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+        const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+        
+        // Format month name (e.g., "Jan 2024", "Dec 2023")
+        const monthName = monthDate.toLocaleDateString('en-US', { 
+          month: 'short', 
+          year: 'numeric' 
+        });
+        
+        months.unshift({
+          name: monthName,
+          start: monthStart,
+          end: monthEnd
+        });
+      }
+      
+      const monthCounts: Record<string, number> = {};
+      months.forEach(month => monthCounts[month.name] = 0);
       
       tickets.forEach(ticket => {
         const createdAt = new Date(ticket.created_at);
-        if (createdAt >= threeMonthsAgo) {
-          const monthsDiff = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24 * 30));
-          if (monthsDiff >= 0 && monthsDiff < months.length) {
-            monthCounts[months[months.length - 1 - monthsDiff]]++;
+        months.forEach(month => {
+          if (createdAt >= month.start && createdAt <= month.end) {
+            monthCounts[month.name]++;
           }
-        }
+        });
       });
       
       return months.map(month => ({
-        name: month,
-        value: monthCounts[month]
+        name: month.name,
+        value: monthCounts[month.name]
       }));
     }
   }
