@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       const result = await saml.validatePostResponseAsync({ SAMLResponse: samlResponse } as any);
       profile = result.profile;
       console.log('✅ SAML validation successful');
-      console.log('👤 User profile from SAML:', profile);
+      console.log('👤 User profile from SAML:', JSON.stringify(profile, null, 2));
     } catch (samlError) {
       console.error('❌ SAML validation failed:', samlError);
       
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
         const fallbackResult = await fallbackSaml.validatePostResponseAsync({ SAMLResponse: samlResponse } as any);
         profile = fallbackResult.profile;
         console.log('⚠️ Fallback validation successful (signature validation disabled)');
-        console.log('👤 User profile from fallback:', profile);
+        console.log('👤 User profile from fallback:', JSON.stringify(profile, null, 2));
       } catch (fallbackError) {
         console.error('❌ Fallback validation also failed:', fallbackError);
         return NextResponse.json({ 
@@ -121,10 +121,11 @@ export async function POST(request: NextRequest) {
 
     if (!user.email) {
       console.error('❌ No email found in SAML profile');
-      console.log('📋 Full profile for debugging:', profile);
+      console.log('📋 Full profile for debugging:', JSON.stringify(profile, null, 2));
+      console.log('🔍 Profile keys:', Object.keys(profile || {}));
       return NextResponse.json({ 
         error: 'No user email found in SAML response', 
-        details: 'Please check SAML attribute mapping in Okta' 
+        details: 'Please check SAML attribute mapping in Okta. Available attributes: ' + Object.keys(profile || {}).join(', ')
       }, { status: 400 });
     }
 
