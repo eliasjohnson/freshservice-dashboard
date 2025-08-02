@@ -7,8 +7,16 @@ export async function POST(request: NextRequest) {
   console.log('🔗 Referer:', request.headers.get('referer'))
   console.log('🌐 URL:', request.url)
   
-  // Redirect POST requests to GET for the same URL
-  return NextResponse.redirect(request.url.replace('http://', 'https://'), 303)
+  // Check if this might be from a SAML redirect
+  const referer = request.headers.get('referer')
+  if (referer && referer.includes('/api/saml/callback')) {
+    console.log('📝 Detected POST from SAML callback, converting to GET')
+  }
+  
+  // Always redirect POST requests to GET using 303 status
+  const url = new URL(request.url)
+  url.protocol = 'https:' // Ensure HTTPS
+  return NextResponse.redirect(url.toString(), 303)
 }
 
 // Handle OPTIONS requests

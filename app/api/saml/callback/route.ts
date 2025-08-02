@@ -143,11 +143,16 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Session created, redirecting to dashboard');
     
-    // Redirect to dashboard
+    // Use 303 status code to ensure the redirect is always a GET request
+    // This prevents the POST method from being preserved during redirect
     const baseUrl = `https://${request.headers.get('host')}`;
     const redirectUrl = new URL('/', baseUrl);
     console.log('🔄 Redirecting to:', redirectUrl.toString());
-    const response = NextResponse.redirect(redirectUrl);
+    
+    // Create response with explicit 303 status to force GET redirect
+    const response = NextResponse.redirect(redirectUrl, {
+      status: 303, // 303 See Other - Always results in GET request
+    });
     return addSecurityHeaders(response);
   } catch (error) {
     console.error('❌ SAML callback error:', error);
