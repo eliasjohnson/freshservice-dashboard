@@ -1187,13 +1187,11 @@ function createAgentWorkloadData(tickets: Ticket[], agents: Agent[], groups: Gro
 }
 
 /**
- * Count tickets resolved today
+ * Count tickets resolved in the selected time period
  */
-function countResolvedToday(tickets: Ticket[]): number {
-  const today = new Date().toISOString().split('T')[0];
+function countResolvedInPeriod(tickets: Ticket[], timeRange: string): number {
   return tickets.filter((ticket: Ticket) => {
-    const updated = new Date(ticket.updated_at).toISOString().split('T')[0];
-    return updated === today && RESOLVED_STATUSES.includes(ticket.status); // Use RESOLVED_STATUSES constant
+    return RESOLVED_STATUSES.includes(ticket.status); // All tickets passed in are already filtered by time period
   }).length;
 }
 
@@ -1774,7 +1772,7 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
         // Status 2 (Open) + Status 3 (Pending) + Status 6 (Hold) + Status 8 (Waiting on Customer)
         // These all represent tickets that need attention from the IT team
         openTickets: filteredTickets.filter(t => ACTIVE_TICKET_STATUSES.includes(t.status)).length,
-        resolvedToday: countResolvedToday(filteredTickets),
+        resolvedToday: countResolvedInPeriod(filteredTickets, filters.timeRange),
         avgResponseTime: await calculateActualFirstResponseTime(filteredTickets, filters),
         customerSatisfaction: '92%', // This would come from surveys/feedback in real implementation
         slaBreaches: countSLABreaches(filteredTickets),
