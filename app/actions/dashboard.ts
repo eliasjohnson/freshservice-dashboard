@@ -1189,9 +1189,33 @@ function createAgentWorkloadData(tickets: Ticket[], agents: Agent[], groups: Gro
 /**
  * Count tickets resolved in the selected time period
  */
-function countResolvedInPeriod(tickets: Ticket[], timeRange: string): number {
-  return tickets.filter((ticket: Ticket) => {
-    return RESOLVED_STATUSES.includes(ticket.status); // All tickets passed in are already filtered by time period
+function countResolvedInPeriod(allTickets: Ticket[], timeRange: string): number {
+  const now = new Date();
+  let startDate: Date;
+  
+  switch (timeRange) {
+    case 'today':
+      startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      break;
+    case 'week':
+      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      break;
+    case 'month':
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      break;
+    case 'quarter':
+      const quarterStart = Math.floor(now.getMonth() / 3) * 3;
+      startDate = new Date(now.getFullYear(), quarterStart, 1);
+      break;
+    default:
+      startDate = new Date(0);
+  }
+
+  // Count tickets that were resolved (updated) during the time period
+  return allTickets.filter((ticket: Ticket) => {
+    if (!RESOLVED_STATUSES.includes(ticket.status)) return false;
+    const updatedDate = new Date(ticket.updated_at);
+    return updatedDate >= startDate;
   }).length;
 }
 
@@ -1772,7 +1796,7 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
         // Status 2 (Open) + Status 3 (Pending) + Status 6 (Hold) + Status 8 (Waiting on Customer)
         // These all represent tickets that need attention from the IT team
         openTickets: filteredTickets.filter(t => ACTIVE_TICKET_STATUSES.includes(t.status)).length,
-        resolvedToday: countResolvedInPeriod(filteredTickets, filters.timeRange),
+        resolvedToday: countResolvedInPeriod(allTickets, filters.timeRange),
         avgResponseTime: await calculateActualFirstResponseTime(filteredTickets, filters),
         customerSatisfaction: '92%', // This would come from surveys/feedback in real implementation
         slaBreaches: countSLABreaches(filteredTickets),
