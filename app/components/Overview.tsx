@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, PieChart, Pie, Legend } from 'recharts'
+import { XAxis, YAxis, CartesianGrid, LineChart, Line, BarChart, Bar, Cell, PieChart, Pie, Area, AreaChart } from 'recharts'
+import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "./ui/chart"
 import { formatNumber } from '../lib/utils'
 import { DashboardData } from '../actions/dashboard'
 import { Activity, CheckCircle, AlertTriangle, Users, Clock, TrendingUp, Target } from 'lucide-react'
@@ -269,58 +270,73 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
             </CardContent>
           </Card>
           
-          {/* Tickets by Status - Current Distribution */}
-          <Card className="dark:bg-slate-950/50 border-slate-800 h-[340px]">
+          {/* Tickets by Status with Insights */}
+          <Card className="dark:bg-slate-950/50 border-slate-800">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-medium">Tickets by Status</CardTitle>
               <p className="text-xs text-muted-foreground">Current status distribution for {timeRange === 'today' ? 'today' : timeRange === 'week' ? 'this week' : timeRange === 'month' ? 'this month' : 'this quarter'}</p>
             </CardHeader>
             <CardContent className="pt-2 pb-2 px-4">
-              <ResponsiveContainer key={`status-bar-${colorRefreshKey}`} width="100%" height={250}>
-                <BarChart 
-                  data={activeStatusData}
-                  margin={{ 
-                    top: 10, 
-                    right: 30, 
-                    left: 0, 
-                    bottom: 20 
-                  }}
-                >
-                  <CartesianGrid 
-                    strokeDasharray="3 3" 
-                    stroke="hsl(215.4 16.3% 20%)" 
-                    vertical={false}
-                  />
-                  <XAxis 
-                    dataKey="name" 
-                    stroke="hsl(215.4 16.3% 50%)"
+              <ChartContainer
+                key={`status-bar-${colorRefreshKey}`}
+                config={{
+                  open: {
+                    label: "Open",
+                    color: "hsl(221.2, 83.2%, 53.3%)",
+                  },
+                  pending: {
+                    label: "Pending",
+                    color: "hsl(24.6, 95%, 53.1%)",
+                  },
+                  hold: {
+                    label: "Hold",
+                    color: "hsl(47.9, 95.8%, 53.1%)",
+                  },
+                  waiting: {
+                    label: "Waiting on Customer",
+                    color: "hsl(262.1, 83.3%, 57.8%)",
+                  },
+                }}
+                className="h-[200px] w-full"
+              >
+                <BarChart data={safeStatusData}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    tickLine={false}
+                    tickMargin={10}
+                    axisLine={false}
                     fontSize={11}
+                  />
+                  <YAxis
                     tickLine={false}
                     axisLine={false}
-                  />
-                  <YAxis 
-                    stroke="hsl(215.4 16.3% 50%)"
+                    tickMargin={8}
                     fontSize={11}
-                    tickLine={false}
-                    axisLine={false}
                   />
-                  <Tooltip 
-                    contentStyle={{
-                      backgroundColor: 'hsl(224 71.4% 4.1%)',
-                      border: '1px solid hsl(215.4 16.3% 25.9%)',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                    }}
-                    formatter={(value: any) => [value, 'Tickets']}
-                    labelFormatter={(label) => `Status: ${label}`}
-                  />
-                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                    {activeStatusData.map((entry, index) => (
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="value" radius={4}>
+                    {safeStatusData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Bar>
                 </BarChart>
-              </ResponsiveContainer>
+              </ChartContainer>
+              
+              {/* Chart Insights */}
+              <div className="mt-3 flex items-center gap-2 text-sm">
+                <div className="flex gap-2 font-medium leading-none">
+                  {(() => {
+                    const total = safeStatusData.reduce((sum, item) => sum + item.value, 0);
+                    const mostCommon = safeStatusData.reduce((max, item) => 
+                      item.value > max.value ? item : max, safeStatusData[0]);
+                    const percent = total > 0 ? Math.round((mostCommon.value / total) * 100) : 0;
+                    
+                    return `${percent}% of tickets are ${mostCommon.name.toLowerCase()}`;
+                  })()}
+                </div>
+                <Activity className="h-4 w-4" />
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -382,61 +398,55 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
             </CardContent>
           </Card>
 
-          {/* Priority Distribution */}
-          <Card className="dark:bg-slate-950/50 border-slate-800 h-[240px]">
+          {/* Priority Distribution with Insights */}
+          <Card className="dark:bg-slate-950/50 border-slate-800">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-medium">Priority Breakdown</CardTitle>
               <p className="text-xs text-muted-foreground">Ticket urgency distribution</p>
             </CardHeader>
-            <CardContent className="p-0">
-              <div className="px-3 pt-2 pb-2">
-                <ResponsiveContainer key={`priority-${colorRefreshKey}`} width="100%" height={165}>
-                <BarChart
-                  data={safePriorityData}
-                  margin={{
-                    top: 10,
-                    right: 10,
-                    left: 0,
-                    bottom: 20,
-                  }}
-                  barCategoryGap="25%"
-                >
-                  <CartesianGrid 
-                    strokeDasharray="0" 
-                    stroke="hsl(215.4 16.3% 20%)" 
-                    vertical={false}
-                    horizontalPoints={[0, 30, 60, 90, 120]}
-                  />
-                  <XAxis 
-                    dataKey="name" 
-                    stroke="hsl(215.4 16.3% 50%)"
-                    fontSize={11}
+            <CardContent className="pt-2 pb-3 px-4">
+              <ChartContainer
+                key={`priority-${colorRefreshKey}`}
+                config={{
+                  low: {
+                    label: "Low",
+                    color: "hsl(142.1, 76.2%, 36.3%)",
+                  },
+                  medium: {
+                    label: "Medium", 
+                    color: "hsl(221.2, 83.2%, 53.3%)",
+                  },
+                  high: {
+                    label: "High",
+                    color: "hsl(24.6, 95%, 53.1%)",
+                  },
+                  urgent: {
+                    label: "Urgent",
+                    color: "hsl(0, 84.2%, 60.2%)",
+                  },
+                }}
+                className="h-[140px] w-full"
+              >
+                <BarChart data={safePriorityData}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="name"
                     tickLine={false}
-                    axisLine={{ stroke: 'hsl(215.4 16.3% 20%)' }}
+                    tickMargin={10}
+                    axisLine={false}
+                    fontSize={12}
                   />
-                  <YAxis 
-                    stroke="hsl(215.4 16.3% 50%)"
-                    fontSize={11}
+                  <YAxis
                     tickLine={false}
                     axisLine={false}
-                    domain={[0, 120]}
-                    ticks={[0, 30, 60, 90, 120]}
+                    tickMargin={8}
+                    fontSize={12}
                   />
-                  <Tooltip 
-                    contentStyle={{
-                      backgroundColor: 'hsl(224 71.4% 4.1%)',
-                      border: '1px solid hsl(215.4 16.3% 25.9%)',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                    }}
-                    formatter={(value: any) => [value, 'Tickets']}
-                    labelFormatter={(label) => `${label} Priority`}
+                  <ChartTooltip
+                    cursor={false}
+                    content={<ChartTooltipContent indicator="dashed" />}
                   />
-                  <Bar 
-                    dataKey="value" 
-                    radius={[2, 2, 0, 0]}
-                    fill={CHART_COLORS.green}
-                  >
+                  <Bar dataKey="value" radius={4}>
                     {safePriorityData.map((entry, index) => (
                       <Cell 
                         key={`cell-${index}`} 
@@ -445,66 +455,102 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                     ))}
                   </Bar>
                 </BarChart>
-              </ResponsiveContainer>
+              </ChartContainer>
+              
+              {/* Chart Insights */}
+              <div className="mt-3 flex items-center gap-2 text-sm">
+                <div className="flex gap-2 font-medium leading-none">
+                  {(() => {
+                    const total = safePriorityData.reduce((sum, item) => sum + item.value, 0);
+                    const urgent = safePriorityData.find(item => item.name === 'Urgent')?.value || 0;
+                    const high = safePriorityData.find(item => item.name === 'High')?.value || 0;
+                    const criticalPercent = total > 0 ? Math.round(((urgent + high) / total) * 100) : 0;
+                    
+                    if (criticalPercent > 50) {
+                      return `${criticalPercent}% critical priority tickets`;
+                    } else if (criticalPercent > 25) {
+                      return `${criticalPercent}% high priority • manageable load`;
+                    } else {
+                      return `${criticalPercent}% critical • healthy distribution`;
+                    }
+                  })()}
+                </div>
+                <AlertTriangle className="h-4 w-4" />
               </div>
             </CardContent>
           </Card>
 
-          {/* Trend Chart */}
-          <Card className="dark:bg-slate-950/50 border-slate-800 h-[240px]">
+          {/* Trend Chart with Insights */}
+          <Card className="dark:bg-slate-950/50 border-slate-800">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-medium">{trendInfo.title}</CardTitle>
               <p className="text-xs text-muted-foreground">{trendInfo.description}</p>
             </CardHeader>
             <CardContent className="pt-2 pb-3 px-4">
-              <ResponsiveContainer key={`trend-${colorRefreshKey}`} width="100%" height={170}>
-                <LineChart 
-                  data={data.ticketsTrend} 
-                  margin={{ 
-                    top: 20, 
-                    right: 30, 
-                    left: 20, 
-                    bottom: 20 
-                  }}
-                >
-                  <CartesianGrid 
-                    strokeDasharray="3 3" 
-                    stroke="hsl(var(--border))" 
-                    className="opacity-30"
-                  />
+              <ChartContainer
+                key={`trend-${colorRefreshKey}`}
+                config={{
+                  tickets: {
+                    label: "Tickets",
+                    color: "hsl(var(--primary))",
+                  },
+                }}
+                className="h-[140px] w-full"
+              >
+                <AreaChart data={data.ticketsTrend}>
+                  <CartesianGrid strokeDasharray="3 3" />
                   <XAxis 
                     dataKey="name" 
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
                     tickLine={false}
                     axisLine={false}
-                  />
-                  <YAxis 
-                    stroke="hsl(var(--muted-foreground))"
+                    tickMargin={8}
                     fontSize={12}
+                  />
+                  <YAxis
                     tickLine={false}
-                    axisLine={false}
+                    axialLine={false}
+                    tickMargin={8}
+                    fontSize={12}
                   />
-                  <Tooltip 
-                    contentStyle={{
-                      backgroundColor: 'hsl(var(--background))',
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                    }}
-                    formatter={(value) => [value, 'Tickets']}
-                    labelFormatter={(label) => `${label}`}
+                  <ChartTooltip
+                    cursor={false}
+                    content={<ChartTooltipContent indicator="dot" />}
                   />
-                  <Line 
-                    type="monotone" 
-                    dataKey="value" 
-                    stroke="hsl(var(--primary))"
+                  <Area
+                    dataKey="value"
+                    type="monotone"
+                    fill="var(--color-tickets)"
+                    fillOpacity={0.4}
+                    stroke="var(--color-tickets)"
                     strokeWidth={2}
-                    dot={false}
                   />
-                </LineChart>
-              </ResponsiveContainer>
+                </AreaChart>
+              </ChartContainer>
+              
+              {/* Chart Insights */}
+              <div className="mt-3 flex items-center gap-2 text-sm">
+                <div className="flex gap-2 font-medium leading-none">
+                  {(() => {
+                    const values = data.ticketsTrend.map(d => d.value);
+                    const total = values.reduce((sum, val) => sum + val, 0);
+                    const average = Math.round(total / values.length);
+                    const peak = Math.max(...values);
+                    const peakIndex = values.indexOf(peak);
+                    const peakPeriod = data.ticketsTrend[peakIndex]?.name;
+                    
+                    if (timeRange === 'today') {
+                      return `Peak activity: ${peakPeriod} (${peak} tickets)`;
+                    } else if (timeRange === 'week') {
+                      return `${average} avg daily tickets • Peak: ${peakPeriod}`;
+                    } else if (timeRange === 'month') {
+                      return `${average} avg weekly tickets • Peak: ${peakPeriod}`;
+                    } else {
+                      return `${average} avg monthly tickets • Peak: ${peakPeriod}`;
+                    }
+                  })()}
+                </div>
+                <TrendingUp className="h-4 w-4" />
+              </div>
             </CardContent>
           </Card>
         </div>
