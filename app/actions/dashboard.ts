@@ -199,6 +199,13 @@ function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
     const beforeWorkspace = filtered.length;
     filtered = filtered.filter(ticket => ticket.workspace_id === targetWorkspace);
     console.log(`🏢 Filtered to ${filtered.length} tickets from workspace ${targetWorkspace} (was ${beforeWorkspace})`);
+    
+    // If we filtered out too many tickets, warn about potential data loss
+    const filteredOutPercent = ((beforeWorkspace - filtered.length) / beforeWorkspace) * 100;
+    if (filteredOutPercent > 50) {
+      console.log(`⚠️  WARNING: Workspace filtering removed ${filteredOutPercent.toFixed(1)}% of tickets!`);
+      console.log(`   This may cause trend charts to show 0 tickets. Consider using workspace_id=0 for all workspaces.`);
+    }
   }
 
   // EXCLUDE ONBOARDING/OFFBOARDING TICKETS
@@ -269,6 +276,20 @@ function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
   const beforeTime = filtered.length;
   filtered = filtered.filter(ticket => new Date(ticket.created_at) >= startDate);
   console.log(`⏰ Time filter (${filters.timeRange}, since ${startDate.toISOString()}): ${beforeTime} → ${filtered.length} tickets`);
+  
+  // Add detailed debugging for monthly trend issue
+  if (filters.timeRange === 'month') {
+    console.log('🔍 DEBUGGING MONTHLY FILTER:');
+    console.log(`  Start date: ${startDate.toISOString()}`);
+    console.log(`  Tickets in date range: ${filtered.length}`);
+    
+    // Sample some ticket dates
+    const sampleTickets = filtered.slice(0, 5);
+    console.log('  Sample ticket dates:');
+    sampleTickets.forEach((ticket, i) => {
+      console.log(`    ${i + 1}. ${ticket.created_at} (${new Date(ticket.created_at).toISOString()})`);
+    });
+  }
 
   // Filter by priority
   if (filters.priority && filters.priority.length > 0) {
@@ -552,16 +573,21 @@ function createTicketsTrendChartData(tickets: Ticket[], timeRange: string): Arra
     }
     
     case 'month': {
-      // Show last 4 weeks with actual date ranges
+      // Show last 4 weeks with proper date ranges
       const now = new Date();
       const weeks: Array<{name: string, start: Date, end: Date}> = [];
       
       // Create 4 week periods going backwards from now
       for (let i = 0; i < 4; i++) {
+        // Calculate the end of the week (most recent day in the week)
         const weekEnd = new Date(now);
         weekEnd.setDate(now.getDate() - (i * 7));
+        weekEnd.setHours(23, 59, 59, 999); // End of day
+        
+        // Calculate the start of the week (7 days before end)
         const weekStart = new Date(weekEnd);
         weekStart.setDate(weekEnd.getDate() - 6);
+        weekStart.setHours(0, 0, 0, 0); // Start of day
         
         weeks.unshift({
           name: `${weekStart.getMonth() + 1}/${weekStart.getDate()}-${weekEnd.getMonth() + 1}/${weekEnd.getDate()}`,
@@ -573,6 +599,12 @@ function createTicketsTrendChartData(tickets: Ticket[], timeRange: string): Arra
       const weekCounts: Record<string, number> = {};
       weeks.forEach(week => weekCounts[week.name] = 0);
       
+      // Add debugging
+      console.log('📅 Monthly view week ranges:');
+      weeks.forEach(week => {
+        console.log(`  ${week.name}: ${week.start.toISOString()} to ${week.end.toISOString()}`);
+      });
+      
       tickets.forEach(ticket => {
         const createdAt = new Date(ticket.created_at);
         weeks.forEach(week => {
@@ -580,6 +612,12 @@ function createTicketsTrendChartData(tickets: Ticket[], timeRange: string): Arra
             weekCounts[week.name]++;
           }
         });
+      });
+      
+      // Add debugging for results
+      console.log('📊 Monthly view ticket counts:');
+      weeks.forEach(week => {
+        console.log(`  ${week.name}: ${weekCounts[week.name]} tickets`);
       });
       
       return weeks.map(week => ({
@@ -1579,8 +1617,8 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
       let hasMorePages = true;
       let totalPages: number | undefined;
       // Smart pagination: Use API meta info to determine optimal page count
-      // Default to 30 pages (3,000 tickets) as a reasonable maximum for quarterly data
-      let maxSafePages = 30;
+      // Increased to 60 pages (6,000 tickets) to ensure we capture all data
+      let maxSafePages = 60;
       
       console.log('📋 Fetching tickets with smart pagination (optimized for ~3,000 quarterly tickets)...');
       
