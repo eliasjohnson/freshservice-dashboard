@@ -24,4 +24,18 @@ export async function GET(request: NextRequest) {
     },
     { status: 200 }
   )
+}
+
+// Handle OPTIONS requests
+export async function OPTIONS(request: NextRequest) {
+  console.log('🔧 OPTIONS request to root API');
+  return new Response(null, {
+    status: 200,
+    headers: {
+      'Allow': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
 } 

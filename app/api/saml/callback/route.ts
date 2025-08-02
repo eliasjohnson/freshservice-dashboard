@@ -145,7 +145,9 @@ export async function POST(request: NextRequest) {
     
     // Redirect to dashboard
     const baseUrl = `https://${request.headers.get('host')}`;
-    const response = NextResponse.redirect(new URL('/', baseUrl));
+    const redirectUrl = new URL('/', baseUrl);
+    console.log('🔄 Redirecting to:', redirectUrl.toString());
+    const response = NextResponse.redirect(redirectUrl);
     return addSecurityHeaders(response);
   } catch (error) {
     console.error('❌ SAML callback error:', error);
