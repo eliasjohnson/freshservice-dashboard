@@ -2,19 +2,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SAML } from '@node-saml/passport-saml';
 import { samlConfig } from '../../../lib/saml-config';
 
-const saml = new SAML({
-  entryPoint: samlConfig.entryPoint,
-  issuer: samlConfig.issuer,
-  callbackUrl: samlConfig.callbackUrl,
-  idpCert: samlConfig.idpCert || '-----BEGIN CERTIFICATE-----\nMIIDummy\n-----END CERTIFICATE-----', // Dummy cert if none provided
-  wantAssertionsSigned: false,
-  wantNameId: samlConfig.wantNameId,
-  wantNameIdEncrypted: samlConfig.wantNameIdEncrypted,
-  validateInResponseTo: 'never',
-  disableRequestedAuthnContext: true,
-  // Disable all signature validation for testing
-  acceptedClockSkewMs: -1,
-} as any);
+// Lazy initialize SAML to avoid build-time errors
+let saml: any = null;
+
+function getSamlInstance() {
+  if (!saml) {
+    saml = new SAML({
+      entryPoint: samlConfig.entryPoint,
+      issuer: samlConfig.issuer,
+      callbackUrl: samlConfig.callbackUrl,
+      idpCert: samlConfig.idpCert || '-----BEGIN CERTIFICATE-----\nMIIDummy\n-----END CERTIFICATE-----', // Dummy cert if none provided
+      wantAssertionsSigned: false,
+      wantNameId: samlConfig.wantNameId,
+      wantNameIdEncrypted: samlConfig.wantNameIdEncrypted,
+      validateInResponseTo: 'never',
+      disableRequestedAuthnContext: true,
+      // Disable all signature validation for testing
+      acceptedClockSkewMs: -1,
+    } as any);
+  }
+  return saml;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,7 +35,8 @@ export async function GET(request: NextRequest) {
     });
 
     // Generate proper SAML AuthnRequest
-    const loginUrl = await saml.getAuthorizeUrlAsync({} as any, {} as any, {} as any);
+    const samlInstance = getSamlInstance();
+    const loginUrl = await samlInstance.getAuthorizeUrlAsync({} as any, {} as any, {} as any);
     console.log('🔗 Generated login URL:', loginUrl);
 
     return NextResponse.redirect(loginUrl);
