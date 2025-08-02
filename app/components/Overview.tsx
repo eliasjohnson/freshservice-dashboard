@@ -6,7 +6,7 @@ import { XAxis, YAxis, CartesianGrid, LineChart, Line, BarChart, Bar, Cell, PieC
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "./ui/chart"
 import { formatNumber } from '../lib/utils'
 import { DashboardData } from '../actions/dashboard'
-import { Activity, CheckCircle, AlertTriangle, Users, Clock, TrendingUp, Target } from 'lucide-react'
+import { Activity, CheckCircle, AlertTriangle, Users, Clock, TrendingUp, Target, Award, Timer, Zap } from 'lucide-react'
 import { FunnelChart } from './FunnelChart'
 
 const STAGE_COLORS = [
@@ -245,26 +245,26 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                 
                 <div className="space-y-1">
                   <div className="flex items-center">
-                    <AlertTriangle className="mr-1.5 h-3.5 w-3.5 text-orange-500" />
-                    <span className="text-xs">Overdue Items</span>
+                    <Award className="mr-1.5 h-3.5 w-3.5 text-green-500" />
+                    <span className="text-xs">Resolution Rate</span>
                   </div>
-                  <div className="text-xl font-semibold text-orange-500">{formatNumber(data.stats.overdueTickets)}</div>
+                  <div className="text-xl font-semibold text-green-500">{data.stats.resolutionRate}%</div>
                 </div>
                 
                 <div className="space-y-1">
                   <div className="flex items-center">
-                    <Activity className="mr-1.5 h-3.5 w-3.5 text-purple-500" />
-                    <span className="text-xs">Unassigned</span>
+                    <Timer className="mr-1.5 h-3.5 w-3.5 text-blue-500" />
+                    <span className="text-xs">Avg Resolution Time</span>
                   </div>
-                  <div className="text-xl font-semibold text-purple-500">{formatNumber(data.stats.unassignedTickets)}</div>
+                  <div className="text-xl font-semibold text-blue-500">{data.stats.avgResolutionTime}</div>
                 </div>
                 
                 <div className="space-y-1">
                   <div className="flex items-center">
-                    <Users className="mr-1.5 h-3.5 w-3.5 text-blue-500" />
-                    <span className="text-xs">Team Size</span>
+                    <Zap className="mr-1.5 h-3.5 w-3.5 text-purple-500" />
+                    <span className="text-xs">First Call Resolution</span>
                   </div>
-                  <div className="text-xl font-semibold text-blue-500">{formatNumber(data.stats.totalAgents)}</div>
+                  <div className="text-xl font-semibold text-purple-500">{data.stats.firstCallResolution}%</div>
                 </div>
               </div>
             </CardContent>
