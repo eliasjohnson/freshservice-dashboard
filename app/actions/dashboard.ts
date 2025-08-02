@@ -266,8 +266,21 @@ function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
       startDate = new Date(now.getFullYear(), now.getMonth(), 1);
       break;
     case 'quarter':
-      const quarterStart = Math.floor(now.getMonth() / 3) * 3;
-      startDate = new Date(now.getFullYear(), quarterStart, 1);
+      // Business quarters: Q1 (Jan-Mar), Q2 (Apr-Jun), Q3 (Jul-Sep), Q4 (Oct-Dec)
+      const currentMonth = now.getMonth(); // 0-based: Jan=0, Dec=11
+      let quarterStartMonth: number;
+      
+      if (currentMonth >= 0 && currentMonth <= 2) { // Q1: Jan-Mar
+        quarterStartMonth = 0; // January
+      } else if (currentMonth >= 3 && currentMonth <= 5) { // Q2: Apr-Jun
+        quarterStartMonth = 3; // April
+      } else if (currentMonth >= 6 && currentMonth <= 8) { // Q3: Jul-Sep
+        quarterStartMonth = 6; // July
+      } else { // Q4: Oct-Dec
+        quarterStartMonth = 9; // October
+      }
+      
+      startDate = new Date(now.getFullYear(), quarterStartMonth, 1);
       break;
     default:
       startDate = new Date(0);
@@ -277,7 +290,32 @@ function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
   filtered = filtered.filter(ticket => new Date(ticket.created_at) >= startDate);
   console.log(`⏰ Time filter (${filters.timeRange}, since ${startDate.toISOString()}): ${beforeTime} → ${filtered.length} tickets`);
   
-  // Add detailed debugging for monthly trend issue
+  // Add detailed debugging for quarterly and monthly filters
+  if (filters.timeRange === 'quarter') {
+    console.log('🔍 DEBUGGING QUARTERLY FILTER:');
+    console.log(`  Start date: ${startDate.toISOString()}`);
+    console.log(`  Current month: ${now.getMonth()} (${now.toLocaleDateString('en-US', {month: 'short'})})`);
+    console.log(`  Quarter includes months: ${
+      now.getMonth() >= 0 && now.getMonth() <= 2 ? 'Jan-Mar (Q1)' :
+      now.getMonth() >= 3 && now.getMonth() <= 5 ? 'Apr-Jun (Q2)' :
+      now.getMonth() >= 6 && now.getMonth() <= 8 ? 'Jul-Sep (Q3)' :
+      'Oct-Dec (Q4)'
+    }`);
+    console.log(`  Quarterly tickets found: ${filtered.length}`);
+    
+    // Show sample of June tickets if we're in Q2
+    if (now.getMonth() >= 3 && now.getMonth() <= 5) {
+      const juneTickets = filtered.filter(ticket => {
+        const ticketDate = new Date(ticket.created_at);
+        return ticketDate.getMonth() === 5; // June is month 5 (0-based)
+      });
+      console.log(`  📅 June tickets specifically: ${juneTickets.length}`);
+      if (juneTickets.length > 0) {
+        console.log(`  📅 Sample June ticket dates: ${juneTickets.slice(0, 3).map(t => new Date(t.created_at).toDateString()).join(', ')}`);
+      }
+    }
+  }
+  
   if (filters.timeRange === 'month') {
     console.log('🔍 DEBUGGING MONTHLY FILTER:');
     console.log(`  Start date: ${startDate.toISOString()}`);
@@ -627,23 +665,37 @@ function createTicketsTrendChartData(tickets: Ticket[], timeRange: string): Arra
     }
     
     default: {
-      // Quarter view - show by actual month names
+      // Quarter view - show current business quarter months
       const now = new Date();
       const months: Array<{name: string, start: Date, end: Date}> = [];
       
-      // Create 3 month periods going backwards from now
-      for (let i = 0; i < 3; i++) {
-        const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
-        const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+      // Get current business quarter months
+      const currentMonth = now.getMonth(); // 0-based: Jan=0, Dec=11
+      let quarterMonths: number[];
+      
+      if (currentMonth >= 0 && currentMonth <= 2) { // Q1: Jan-Mar
+        quarterMonths = [0, 1, 2]; // January, February, March
+      } else if (currentMonth >= 3 && currentMonth <= 5) { // Q2: Apr-Jun
+        quarterMonths = [3, 4, 5]; // April, May, June
+      } else if (currentMonth >= 6 && currentMonth <= 8) { // Q3: Jul-Sep
+        quarterMonths = [6, 7, 8]; // July, August, September
+      } else { // Q4: Oct-Dec
+        quarterMonths = [9, 10, 11]; // October, November, December
+      }
+      
+      // Create month periods for the current quarter
+      for (const monthIndex of quarterMonths) {
+        const monthStart = new Date(now.getFullYear(), monthIndex, 1);
+        const monthEnd = new Date(now.getFullYear(), monthIndex + 1, 0);
+        monthEnd.setHours(23, 59, 59, 999); // End of last day of month
         
-        // Format month name (e.g., "Jan 2024", "Dec 2023")
-        const monthName = monthDate.toLocaleDateString('en-US', { 
+        // Format month name (e.g., "Jan 2024", "Jun 2024")
+        const monthName = monthStart.toLocaleDateString('en-US', { 
           month: 'short', 
           year: 'numeric' 
         });
         
-        months.unshift({
+        months.push({
           name: monthName,
           start: monthStart,
           end: monthEnd
@@ -1247,8 +1299,21 @@ function countResolvedInPeriod(allTickets: Ticket[], timeRange: string): number 
       startDate = new Date(now.getFullYear(), now.getMonth(), 1);
       break;
     case 'quarter':
-      const quarterStart = Math.floor(now.getMonth() / 3) * 3;
-      startDate = new Date(now.getFullYear(), quarterStart, 1);
+      // Business quarters: Q1 (Jan-Mar), Q2 (Apr-Jun), Q3 (Jul-Sep), Q4 (Oct-Dec)
+      const currentMonth = now.getMonth(); // 0-based: Jan=0, Dec=11
+      let quarterStartMonth: number;
+      
+      if (currentMonth >= 0 && currentMonth <= 2) { // Q1: Jan-Mar
+        quarterStartMonth = 0; // January
+      } else if (currentMonth >= 3 && currentMonth <= 5) { // Q2: Apr-Jun
+        quarterStartMonth = 3; // April
+      } else if (currentMonth >= 6 && currentMonth <= 8) { // Q3: Jul-Sep
+        quarterStartMonth = 6; // July
+      } else { // Q4: Oct-Dec
+        quarterStartMonth = 9; // October
+      }
+      
+      startDate = new Date(now.getFullYear(), quarterStartMonth, 1);
       break;
     default:
       startDate = new Date(0);
@@ -1364,8 +1429,21 @@ function calculateFirstCallResolution(allTickets: Ticket[], timeRange: string): 
       startDate = new Date(now.getFullYear(), now.getMonth(), 1);
       break;
     case 'quarter':
-      const quarterStart = Math.floor(now.getMonth() / 3) * 3;
-      startDate = new Date(now.getFullYear(), quarterStart, 1);
+      // Business quarters: Q1 (Jan-Mar), Q2 (Apr-Jun), Q3 (Jul-Sep), Q4 (Oct-Dec)
+      const currentMonth = now.getMonth(); // 0-based: Jan=0, Dec=11
+      let quarterStartMonth: number;
+      
+      if (currentMonth >= 0 && currentMonth <= 2) { // Q1: Jan-Mar
+        quarterStartMonth = 0; // January
+      } else if (currentMonth >= 3 && currentMonth <= 5) { // Q2: Apr-Jun
+        quarterStartMonth = 3; // April
+      } else if (currentMonth >= 6 && currentMonth <= 8) { // Q3: Jul-Sep
+        quarterStartMonth = 6; // July
+      } else { // Q4: Oct-Dec
+        quarterStartMonth = 9; // October
+      }
+      
+      startDate = new Date(now.getFullYear(), quarterStartMonth, 1);
       break;
     default:
       startDate = new Date(0);
