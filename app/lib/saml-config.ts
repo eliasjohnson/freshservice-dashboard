@@ -36,8 +36,8 @@ const baseUrl = isProduction
   : 'http://localhost:3000';
 
 export const samlConfig = {
-  entryPoint: process.env.SAML_ENTRY_POINT || '',
-  issuer: 'https://freshservice-dashboard.vercel.app', // Match exactly what Okta expects
+  entryPoint: process.env.SAML_ENTRY_POINT || 'https://pattern.okta.com/app/pattern_freshservicedashboard_1/exk1x7g8ko6vipqKy1d8/sso/saml',
+  issuer: process.env.SAML_ISSUER || 'http://www.okta.com/exk1x7g8ko6vipqKy1d8', // Match exactly what Okta expects
   callbackUrl: process.env.SAML_CALLBACK_URL || `${baseUrl}/api/saml/callback`,
   idpCert: formatCertificate(process.env.SAML_CERT || ''),
   wantAssertionsSigned: useProductionSecurity, // Enable signature validation in production or when testing
