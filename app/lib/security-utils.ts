@@ -51,8 +51,6 @@ export function validateReferer(request: NextRequest): boolean {
   }
   
   const allowedOrigins = [
-    `http://localhost:3000`,
-    `https://localhost:3000`,
     `https://${host}`,
     `https://freshservice-dashboard.vercel.app`,
   ];

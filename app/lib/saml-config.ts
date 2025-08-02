@@ -31,9 +31,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const forceProductionSecurity = process.env.FORCE_PRODUCTION_SECURITY === 'true';
 const useProductionSecurity = isProduction || forceProductionSecurity;
 
-const baseUrl = isProduction 
-  ? process.env.SAML_ISSUER || 'https://freshservice-dashboard.vercel.app'
-  : 'http://localhost:3000';
+const baseUrl = process.env.SAML_ISSUER || 'https://freshservice-dashboard.vercel.app';
 
 export const samlConfig = {
   entryPoint: process.env.SAML_ENTRY_POINT || 'https://pattern.okta.com/app/pattern_freshservicedashboard_1/exk1x7g8ko6vipqKy1d8/sso/saml',

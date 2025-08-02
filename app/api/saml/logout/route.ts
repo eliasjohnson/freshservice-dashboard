@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     // 3. Log the logout event for security auditing
 
     // Redirect to home page or login page
-    const baseUrl = request.url.includes('localhost') ? 'http://localhost:3000' : `https://${request.headers.get('host')}`;
+    const baseUrl = `https://${request.headers.get('host')}`;
     return NextResponse.redirect(new URL('/', baseUrl));
   } catch (error) {
     console.error('SAML logout error:', error);

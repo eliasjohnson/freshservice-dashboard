@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
     console.log('✅ Session created, redirecting to dashboard');
     
     // Redirect to dashboard
-    const baseUrl = request.url.includes('localhost') ? 'http://localhost:3000' : `https://${request.headers.get('host')}`;
+    const baseUrl = `https://${request.headers.get('host')}`;
     const response = NextResponse.redirect(new URL('/', baseUrl));
     return addSecurityHeaders(response);
   } catch (error) {
