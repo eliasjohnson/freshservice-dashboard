@@ -22,7 +22,10 @@ const saml = new SAML({
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('🔐 SAML callback received');
+    console.log('🔐 SAML callback received - POST method');
+    console.log('🌐 Request URL:', request.url);
+    console.log('📋 Request method:', request.method);
+    console.log('🔗 Headers:', Object.fromEntries(request.headers.entries()));
     
     // Rate limiting
     const clientIp = getClientIp(request);
@@ -152,6 +155,20 @@ export async function POST(request: NextRequest) {
       details: error instanceof Error ? error.message : String(error) 
     }, { status: 500 });
   }
+}
+
+// Handle other methods that might cause 405 errors
+export async function OPTIONS(request: NextRequest) {
+  console.log('🔧 OPTIONS request received');
+  return new Response(null, {
+    status: 200,
+    headers: {
+      'Allow': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
 }
 
 // Also handle GET for metadata endpoint
