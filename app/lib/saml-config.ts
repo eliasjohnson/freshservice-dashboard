@@ -37,7 +37,7 @@ const baseUrl = isProduction
 
 export const samlConfig = {
   entryPoint: process.env.SAML_ENTRY_POINT || '',
-  issuer: baseUrl,
+  issuer: 'https://freshservice-dashboard.vercel.app', // Match exactly what Okta expects
   callbackUrl: process.env.SAML_CALLBACK_URL || `${baseUrl}/api/saml/callback`,
   idpCert: formatCertificate(process.env.SAML_CERT || ''),
   wantAssertionsSigned: useProductionSecurity, // Enable signature validation in production or when testing
