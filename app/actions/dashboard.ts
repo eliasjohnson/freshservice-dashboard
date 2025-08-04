@@ -97,7 +97,7 @@ export interface DashboardData {
 // Filtering options interface
 export interface DashboardFilters {
   agentId?: number | 'all';
-  timeRange: 'today' | 'week' | 'month' | 'quarter';
+  timeRange: 'today' | 'week' | 'month' | 'quarter' | 'q1' | 'q2' | 'q3' | 'q4';
   department?: string;
   priority?: number[];
   status?: number[];
@@ -281,6 +281,18 @@ function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
       }
       
       startDate = new Date(now.getFullYear(), quarterStartMonth, 1);
+      break;
+    case 'q1':
+      startDate = new Date(now.getFullYear(), 0, 1); // January 1st
+      break;
+    case 'q2':
+      startDate = new Date(now.getFullYear(), 3, 1); // April 1st
+      break;
+    case 'q3':
+      startDate = new Date(now.getFullYear(), 6, 1); // July 1st
+      break;
+    case 'q4':
+      startDate = new Date(now.getFullYear(), 9, 1); // October 1st
       break;
     default:
       startDate = new Date(0);
@@ -661,6 +673,70 @@ function createTicketsTrendChartData(tickets: Ticket[], timeRange: string): Arra
       return weeks.map(week => ({
         name: week.name,
         value: weekCounts[week.name]
+      }));
+    }
+    
+    case 'q1':
+    case 'q2':
+    case 'q3':  
+    case 'q4': {
+      // Specific quarter view - show the 3 months for that quarter
+      const now = new Date();
+      const months: Array<{name: string, start: Date, end: Date}> = [];
+      
+      // Get quarter months based on selection
+      let quarterMonths: number[];
+      switch (timeRange) {
+        case 'q1':
+          quarterMonths = [0, 1, 2]; // January, February, March
+          break;
+        case 'q2':
+          quarterMonths = [3, 4, 5]; // April, May, June
+          break;
+        case 'q3':
+          quarterMonths = [6, 7, 8]; // July, August, September
+          break;
+        case 'q4':
+          quarterMonths = [9, 10, 11]; // October, November, December
+          break;
+        default:
+          quarterMonths = [0, 1, 2]; // Fallback to Q1
+      }
+      
+      // Create month periods for the specified quarter
+      for (const monthIndex of quarterMonths) {
+        const monthStart = new Date(now.getFullYear(), monthIndex, 1);
+        const monthEnd = new Date(now.getFullYear(), monthIndex + 1, 0);
+        monthEnd.setHours(23, 59, 59, 999); // End of last day of month
+        
+        // Format month name (e.g., "Jan 2024", "Jun 2024")
+        const monthName = monthStart.toLocaleDateString('en-US', { 
+          month: 'short', 
+          year: 'numeric' 
+        });
+        
+        months.push({
+          name: monthName,
+          start: monthStart,
+          end: monthEnd
+        });
+      }
+      
+      const monthCounts: Record<string, number> = {};
+      months.forEach(month => monthCounts[month.name] = 0);
+      
+      tickets.forEach(ticket => {
+        const createdAt = new Date(ticket.created_at);
+        months.forEach(month => {
+          if (createdAt >= month.start && createdAt <= month.end) {
+            monthCounts[month.name]++;
+          }
+        });
+      });
+      
+      return months.map(month => ({
+        name: month.name,
+        value: monthCounts[month.name]
       }));
     }
     
@@ -1315,6 +1391,18 @@ function countResolvedInPeriod(allTickets: Ticket[], timeRange: string): number 
       
       startDate = new Date(now.getFullYear(), quarterStartMonth, 1);
       break;
+    case 'q1':
+      startDate = new Date(now.getFullYear(), 0, 1); // January 1st
+      break;
+    case 'q2':
+      startDate = new Date(now.getFullYear(), 3, 1); // April 1st
+      break;
+    case 'q3':
+      startDate = new Date(now.getFullYear(), 6, 1); // July 1st
+      break;
+    case 'q4':
+      startDate = new Date(now.getFullYear(), 9, 1); // October 1st
+      break;
     default:
       startDate = new Date(0);
   }
@@ -1444,6 +1532,18 @@ function calculateFirstCallResolution(allTickets: Ticket[], timeRange: string): 
       }
       
       startDate = new Date(now.getFullYear(), quarterStartMonth, 1);
+      break;
+    case 'q1':
+      startDate = new Date(now.getFullYear(), 0, 1); // January 1st
+      break;
+    case 'q2':
+      startDate = new Date(now.getFullYear(), 3, 1); // April 1st
+      break;
+    case 'q3':
+      startDate = new Date(now.getFullYear(), 6, 1); // July 1st
+      break;
+    case 'q4':
+      startDate = new Date(now.getFullYear(), 9, 1); // October 1st
       break;
     default:
       startDate = new Date(0);
@@ -1691,18 +1791,49 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
     } else {
       console.log('🔄 Cache miss - fetching fresh ticket data...');
       
-      // Fetch all tickets with intelligent pagination
+      // Fetch tickets with intelligent pagination based on time range
       let hasMorePages = true;
       let totalPages: number | undefined;
-      // Smart pagination: Use API meta info to determine optimal page count
-      // Increased to 60 pages (6,000 tickets) to ensure we capture all data
-      let maxSafePages = 60;
       
-      console.log('📋 Fetching tickets with smart pagination (optimized for ~3,000 quarterly tickets)...');
+      // Smart pagination based on selected time period
+      let maxSafePages: number;
+      let dateFilter: { from?: Date; to?: Date } | undefined;
+      const now = new Date();
+      
+      switch (filters.timeRange) {
+        case 'today':
+          maxSafePages = 5; // ~500 tickets max for today
+          dateFilter = { from: new Date(now.getTime() - 24 * 60 * 60 * 1000) };
+          break;
+        case 'week':
+          maxSafePages = 10; // ~1,000 tickets max for week
+          dateFilter = { from: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) };
+          break;
+        case 'month':
+          maxSafePages = 20; // ~2,000 tickets max for month
+          dateFilter = { from: new Date(now.getFullYear(), now.getMonth(), 1) };
+          break;
+        case 'quarter':
+        case 'q1':
+        case 'q2':
+        case 'q3':
+        case 'q4':
+          maxSafePages = 40; // ~4,000 tickets max for quarter
+          // For Q1-Q4, we need tickets from Jan 1st of current year
+          dateFilter = { from: new Date(now.getFullYear(), 0, 1) }; // January 1st
+          break;
+        default:
+          maxSafePages = 60; // Fallback for unknown ranges
+      }
+      
+      console.log(`📋 Fetching tickets for ${filters.timeRange} with smart pagination (max ${maxSafePages} pages)...`);
+      if (dateFilter) {
+        console.log(`📅 Date filter applied: from ${dateFilter.from?.toISOString() || 'start'}`);
+      }
       
       while (hasMorePages && page <= maxSafePages) {
         try {
-          const ticketsResponse = await freshserviceApi.getTickets(page, 100);
+          const ticketsResponse = await freshserviceApi.getTickets(page, 100, dateFilter);
           
           // Extract pagination info from first response and optimize page limit
           if (page === 1) {
@@ -1764,10 +1895,36 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
         }
       }
 
-      // Enhanced caching with longer TTL for better performance
+      // Smart caching with TTL based on time range
       if (allTickets.length > 0) {
-        apiCache.set('all_tickets', allTickets, 15 * 60 * 1000); // Extended to 15 minutes
-        console.log(`💾 Cached ${allTickets.length} tickets for 15 minutes (reduced reloading)`);
+        let cacheTTL: number;
+        let cacheKey = `tickets_${filters.timeRange}_${filters.agentId || 'all'}_${now.getFullYear()}`;
+        
+        switch (filters.timeRange) {
+          case 'today':
+            cacheTTL = 2 * 60 * 1000; // 2 minutes for today's data
+            break;
+          case 'week':
+            cacheTTL = 5 * 60 * 1000; // 5 minutes for week data
+            break;
+          case 'month':
+            cacheTTL = 10 * 60 * 1000; // 10 minutes for month data
+            break;
+          case 'quarter':
+          case 'q1':
+          case 'q2':
+          case 'q3':
+          case 'q4':
+            cacheTTL = 30 * 60 * 1000; // 30 minutes for quarter data
+            // Also cache as 'all_tickets' for quarters
+            apiCache.set('all_tickets', allTickets, 30 * 60 * 1000);
+            break;
+          default:
+            cacheTTL = 5 * 60 * 1000; // Default 5 minutes
+        }
+        
+        apiCache.set(cacheKey, allTickets, cacheTTL);
+        console.log(`💾 Cached ${allTickets.length} tickets for ${filters.timeRange} (TTL: ${cacheTTL / 60000} minutes)`);
       }
     }
 

@@ -505,6 +505,10 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                   <option value="week">This Week</option>
                   <option value="month">This Month</option>
                   <option value="quarter">This Quarter</option>
+                  <option value="q1">Q1 (Jan-Mar)</option>
+                  <option value="q2">Q2 (Apr-Jun)</option>
+                  <option value="q3">Q3 (Jul-Sep)</option>
+                  <option value="q4">Q4 (Oct-Dec)</option>
                 </select>
               </div>
 

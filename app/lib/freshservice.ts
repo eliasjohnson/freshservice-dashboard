@@ -234,7 +234,7 @@ export class FreshserviceApiClient {
    * Get tickets with caching and rate limiting
    * PRO Plan: 120 calls per minute for tickets
    */
-  async getTickets(page: number = 1, perPage: number = 100): Promise<TicketResponse> {
+  async getTickets(page: number = 1, perPage: number = 100, dateFilter?: { from?: Date; to?: Date }): Promise<TicketResponse> {
     const cacheKey = apiCache.getTicketsCacheKey(page, perPage);
     
     // Check cache first
@@ -254,8 +254,22 @@ export class FreshserviceApiClient {
     console.log(`🌐 Cache MISS: fetching tickets page ${page}...`);
     
     try {
+      // Build params with optional date filtering
+      const params: any = { page, per_page: perPage };
+      
+      // Add date filtering to reduce API calls
+      if (dateFilter) {
+        if (dateFilter.from) {
+          params.updated_since = dateFilter.from.toISOString();
+        }
+        if (dateFilter.to) {
+          // Note: Freshservice doesn't have 'updated_before', so we'll filter in memory
+          // But we can use updated_since to at least reduce the data fetched
+        }
+      }
+      
       const response: AxiosResponse<TicketResponse> = await this.axiosInstance.get('/tickets', {
-        params: { page, per_page: perPage }
+        params
       });
       
       // Cache the response

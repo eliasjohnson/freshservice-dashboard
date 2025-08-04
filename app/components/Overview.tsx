@@ -118,7 +118,27 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
       case 'quarter':
         return {
           title: 'Quarterly Ticket Trend',
-          description: 'Monthly volume over the past quarter'
+          description: 'Monthly volume over the current quarter'
+        }
+      case 'q1':
+        return {
+          title: 'Q1 Ticket Trend',
+          description: 'Monthly volume for Q1 (Jan-Mar)'
+        }
+      case 'q2':
+        return {
+          title: 'Q2 Ticket Trend',
+          description: 'Monthly volume for Q2 (Apr-Jun)'
+        }
+      case 'q3':
+        return {
+          title: 'Q3 Ticket Trend',
+          description: 'Monthly volume for Q3 (Jul-Sep)'
+        }
+      case 'q4':
+        return {
+          title: 'Q4 Ticket Trend',
+          description: 'Monthly volume for Q4 (Oct-Dec)'
         }
       default:
         return {
@@ -145,7 +165,12 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
               {timeRange === 'today' ? 'Active today' : 
                timeRange === 'week' ? 'From this week' : 
                timeRange === 'month' ? 'From this month' : 
-               'From this quarter'}
+               timeRange === 'quarter' ? 'From this quarter' :
+               timeRange === 'q1' ? 'From Q1 (Jan-Mar)' :
+               timeRange === 'q2' ? 'From Q2 (Apr-Jun)' :
+               timeRange === 'q3' ? 'From Q3 (Jul-Sep)' :
+               timeRange === 'q4' ? 'From Q4 (Oct-Dec)' :
+               'From selected period'}
             </p>
           </CardContent>
         </Card>
@@ -161,7 +186,12 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
               {timeRange === 'today' ? 'Resolved today' : 
                timeRange === 'week' ? 'This week\'s rate' : 
                timeRange === 'month' ? 'This month\'s rate' : 
-               'This quarter\'s rate'}
+               timeRange === 'quarter' ? 'This quarter\'s rate' :
+               timeRange === 'q1' ? 'Q1 resolution rate' :
+               timeRange === 'q2' ? 'Q2 resolution rate' :
+               timeRange === 'q3' ? 'Q3 resolution rate' :
+               timeRange === 'q4' ? 'Q4 resolution rate' :
+               'Selected period rate'}
             </p>
           </CardContent>
         </Card>
@@ -177,7 +207,12 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
               {timeRange === 'today' ? 'Today\'s average' : 
                timeRange === 'week' ? 'This week\'s average' : 
                timeRange === 'month' ? 'This month\'s average' : 
-               'This quarter\'s average'}
+               timeRange === 'quarter' ? 'This quarter\'s average' :
+               timeRange === 'q1' ? 'Q1 average' :
+               timeRange === 'q2' ? 'Q2 average' :
+               timeRange === 'q3' ? 'Q3 average' :
+               timeRange === 'q4' ? 'Q4 average' :
+               'Selected period average'}
             </p>
           </CardContent>
         </Card>
@@ -199,7 +234,12 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
               {timeRange === 'today' ? 'Today\'s SLA status' : 
                timeRange === 'week' ? 'This week\'s SLA' : 
                timeRange === 'month' ? 'This month\'s SLA' : 
-               'This quarter\'s SLA'}
+               timeRange === 'quarter' ? 'This quarter\'s SLA' :
+               timeRange === 'q1' ? 'Q1 SLA status' :
+               timeRange === 'q2' ? 'Q2 SLA status' :
+               timeRange === 'q3' ? 'Q3 SLA status' :
+               timeRange === 'q4' ? 'Q4 SLA status' :
+               'Selected period SLA'}
             </p>
           </CardContent>
         </Card>
@@ -237,7 +277,11 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                       {timeRange === 'today' ? 'Today\'s' : 
                        timeRange === 'week' ? 'This Week\'s' : 
                        timeRange === 'month' ? 'This Month\'s' : 
-                       'This Quarter\'s'} Resolutions
+                       timeRange === 'quarter' ? 'This Quarter\'s' :
+                       timeRange === 'q1' ? 'Q1' :
+                       timeRange === 'q2' ? 'Q2' :
+                       timeRange === 'q3' ? 'Q3' :
+                       timeRange === 'q4' ? 'Q4' : 'Selected Period\'s'} Resolutions
                     </span>
                   </div>
                   <div className="text-xl font-semibold text-green-500">{formatNumber(data.stats.resolvedToday)}</div>
@@ -274,7 +318,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
           <Card className="dark:bg-slate-950/50 border-slate-800">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-medium">Tickets by Status</CardTitle>
-              <p className="text-xs text-muted-foreground">Current status distribution for {timeRange === 'today' ? 'today' : timeRange === 'week' ? 'this week' : timeRange === 'month' ? 'this month' : 'this quarter'}</p>
+              <p className="text-xs text-muted-foreground">Current status distribution for {timeRange === 'today' ? 'today' : timeRange === 'week' ? 'this week' : timeRange === 'month' ? 'this month' : timeRange === 'quarter' ? 'this quarter' : timeRange === 'q1' ? 'Q1 (Jan-Mar)' : timeRange === 'q2' ? 'Q2 (Apr-Jun)' : timeRange === 'q3' ? 'Q3 (Jul-Sep)' : timeRange === 'q4' ? 'Q4 (Oct-Dec)' : 'selected period'}</p>
             </CardHeader>
             <CardContent className="pt-2 pb-2 px-4">
               <ChartContainer
