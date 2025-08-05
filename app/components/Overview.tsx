@@ -552,7 +552,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                   />
                   <YAxis
                     tickLine={false}
-                    axialLine={false}
+                    axisLine={false}
                     tickMargin={8}
                     fontSize={12}
                   />
