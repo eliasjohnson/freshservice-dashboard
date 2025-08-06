@@ -473,7 +473,10 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                 <span className="text-sm font-medium text-muted-foreground">Agent:</span>
                 <select 
                   value={filters.agentId}
-                  onChange={(e) => setFilters({...filters, agentId: e.target.value as any})}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setFilters({...filters, agentId: value === 'all' ? 'all' : Number(value)})
+                  }}
                   disabled={agentsLoading}
                   className="h-8 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
                 >

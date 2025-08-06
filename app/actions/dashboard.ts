@@ -246,8 +246,21 @@ function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
   // Filter by agent
   if (filters.agentId && filters.agentId !== 'all') {
     const beforeAgent = filtered.length;
-    filtered = filtered.filter(ticket => ticket.responder_id === filters.agentId);
+    // Convert both to numbers for comparison to handle string/number type mismatches
+    const agentIdNum = Number(filters.agentId);
+    filtered = filtered.filter(ticket => Number(ticket.responder_id) === agentIdNum);
     console.log(`👤 Agent filter (${filters.agentId}): ${beforeAgent} → ${filtered.length} tickets`);
+    
+    // Debug logging to help identify type mismatches
+    if (filtered.length === 0 && beforeAgent > 0) {
+      console.log(`⚠️  No tickets found for agent ${filters.agentId}. Checking for type mismatches...`);
+      const sampleResponderIds = tickets.slice(0, 5).map(t => ({
+        responder_id: t.responder_id,
+        type: typeof t.responder_id
+      }));
+      console.log(`   Sample responder_ids:`, sampleResponderIds);
+      console.log(`   Filter agentId: ${filters.agentId} (type: ${typeof filters.agentId})`);
+    }
   }
 
   // Filter by time range
@@ -601,24 +614,55 @@ function createTicketsTrendChartData(tickets: Ticket[], timeRange: string): Arra
     }
     
     case 'week': {
-      // Show last 7 days
-      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      const dayCounts: Record<string, number> = days.reduce((acc, day) => ({...acc, [day]: 0}), {});
+      // Show last 7 days with date labels
+      const now = new Date();
+      const days: Array<{name: string, date: Date}> = [];
       
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      // Create array of last 7 days going backwards from today
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(now);
+        date.setDate(now.getDate() - i);
+        date.setHours(0, 0, 0, 0); // Start of day
+        
+        // Format as M/D (e.g., "8/5")
+        const month = date.getMonth() + 1; // getMonth() is 0-based
+        const day = date.getDate();
+        
+        days.push({
+          name: `${month}/${day}`,
+          date: date
+        });
+      }
       
+      // Initialize counts for each day
+      const dayCounts: Record<string, number> = {};
+      days.forEach(day => dayCounts[day.name] = 0);
+      
+      // Count tickets for each day
       tickets.forEach(ticket => {
         const createdAt = new Date(ticket.created_at);
-        if (createdAt >= oneWeekAgo) {
-          const day = days[createdAt.getDay()];
-          dayCounts[day]++;
-        }
+        
+        // Find which day this ticket belongs to
+        days.forEach((day, index) => {
+          const dayStart = new Date(day.date);
+          const dayEnd = new Date(day.date);
+          dayEnd.setHours(23, 59, 59, 999);
+          
+          if (createdAt >= dayStart && createdAt <= dayEnd) {
+            dayCounts[day.name]++;
+          }
+        });
+      });
+      
+      // Debug logging
+      console.log('📅 Weekly trend data:');
+      days.forEach(day => {
+        console.log(`  ${day.name}: ${dayCounts[day.name]} tickets`);
       });
       
       return days.map(day => ({
-        name: day,
-        value: dayCounts[day]
+        name: day.name,
+        value: dayCounts[day.name]
       }));
     }
     
