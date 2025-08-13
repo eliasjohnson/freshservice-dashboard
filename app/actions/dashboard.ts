@@ -3021,8 +3021,8 @@ export async function exportExecutiveReport(quarter: 'q1' | 'q2' | 'q3' | 'q4'):
         categoryBreakdown
       },
       dataQuality: {
-        completeness: completenessScore >= 90 ? 'complete' : 
-                      completenessScore >= 70 ? 'partial' : 'incomplete',
+        completeness: completenessScore >= 90 ? 'complete' as const : 
+                      completenessScore >= 70 ? 'partial' as const : 'incomplete' as const,
         confidence: Math.round(completenessScore),
         warnings
       },
