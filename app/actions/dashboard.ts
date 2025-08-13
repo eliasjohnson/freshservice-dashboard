@@ -276,7 +276,8 @@ function filterTickets(tickets: Ticket[], filters: DashboardFilters): Ticket[] {
       startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       break;
     case 'month':
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      // Show last 30 days instead of current month only
+      startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       break;
     case 'quarter':
       // Business quarters: Q1 (Jan-Mar), Q2 (Apr-Jun), Q3 (Jul-Sep), Q4 (Oct-Dec)
@@ -694,7 +695,7 @@ function createTicketsTrendChartData(tickets: Ticket[], timeRange: string): Arra
       weeks.forEach(week => weekCounts[week.name] = 0);
       
       // Add debugging
-      console.log('📅 Monthly view week ranges:');
+      console.log('📅 Last 4 weeks view - week ranges:');
       weeks.forEach(week => {
         console.log(`  ${week.name}: ${week.start.toISOString()} to ${week.end.toISOString()}`);
       });
@@ -709,7 +710,7 @@ function createTicketsTrendChartData(tickets: Ticket[], timeRange: string): Arra
       });
       
       // Add debugging for results
-      console.log('📊 Monthly view ticket counts:');
+      console.log('📊 Last 4 weeks view - ticket counts:');
       weeks.forEach(week => {
         console.log(`  ${week.name}: ${weekCounts[week.name]} tickets`);
       });
@@ -1416,7 +1417,8 @@ function countResolvedInPeriod(allTickets: Ticket[], timeRange: string): number 
       startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       break;
     case 'month':
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      // Show last 30 days instead of current month only
+      startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       break;
     case 'quarter':
       // Business quarters: Q1 (Jan-Mar), Q2 (Apr-Jun), Q3 (Jul-Sep), Q4 (Oct-Dec)
@@ -1558,7 +1560,8 @@ function calculateFirstCallResolution(allTickets: Ticket[], timeRange: string): 
       startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       break;
     case 'month':
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      // Show last 30 days instead of current month only
+      startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       break;
     case 'quarter':
       // Business quarters: Q1 (Jan-Mar), Q2 (Apr-Jun), Q3 (Jul-Sep), Q4 (Oct-Dec)
@@ -1803,6 +1806,23 @@ async function calculateActualFirstResponseTime(tickets: Ticket[], filters: Dash
 }
 
 /**
+ * Get adjacent time ranges for intelligent pre-fetching
+ */
+function getAdjacentTimeRanges(currentRange: string): string[] {
+  const rangeMap: Record<string, string[]> = {
+    'today': ['week'],
+    'week': ['today', 'month'],
+    'month': ['week', 'quarter'],
+    'quarter': ['month'],
+    'q1': ['q2'],
+    'q2': ['q1', 'q3'],
+    'q3': ['q2', 'q4'],
+    'q4': ['q3']
+  };
+  return rangeMap[currentRange] || [];
+}
+
+/**
  * Server action to fetch dashboard data with filtering - OPTIMIZED for rate limits and caching
  * PRO Plan: 400 calls/min overall, 120 calls/min for tickets
  */
@@ -1829,6 +1849,15 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
     let totalEntries: number | undefined;
     const cachedTickets = !filters.forceRefresh ? apiCache.get<Ticket[]>('all_tickets') : null;
     
+    // Define now at the top level so it's available everywhere
+    const now = new Date();
+    
+    // Executive reporting flag - define it OUTSIDE the else block
+    const isExecutiveReport = ['q1', 'q2', 'q3', 'q4'].includes(filters.timeRange);
+    let fetchedTicketIds = new Set<number>();
+    let duplicateCount = 0;
+    let outOfRangeCount = 0;
+    
     if (cachedTickets) {
       console.log(`💾 Using cached tickets: ${cachedTickets.length} tickets (cache hit!)`);
       allTickets = cachedTickets;
@@ -1838,11 +1867,12 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
       // Fetch tickets with intelligent pagination based on time range
       let hasMorePages = true;
       let totalPages: number | undefined;
+      let consecutiveSmallPages = 0; // Track consecutive pages with suspiciously low ticket counts
+      const MAX_CONSECUTIVE_SMALL_PAGES = 3; // Stop after 3 consecutive small pages to prevent loops
       
       // Smart pagination based on selected time period
       let maxSafePages: number;
       let dateFilter: { from?: Date; to?: Date } | undefined;
-      const now = new Date();
       
       switch (filters.timeRange) {
         case 'today':
@@ -1855,16 +1885,41 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
           break;
         case 'month':
           maxSafePages = 20; // ~2,000 tickets max for month
-          dateFilter = { from: new Date(now.getFullYear(), now.getMonth(), 1) };
+          // Use last 30 days instead of current month only
+          dateFilter = { from: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) };
           break;
         case 'quarter':
+          maxSafePages = 50; // ~5,000 tickets for current quarter
+          const currentQuarter = Math.floor(now.getMonth() / 3);
+          const quarterStart = new Date(now.getFullYear(), currentQuarter * 3, 1);
+          dateFilter = { from: quarterStart };
+          break;
         case 'q1':
         case 'q2':
         case 'q3':
         case 'q4':
-          maxSafePages = 40; // ~4,000 tickets max for quarter
-          // For Q1-Q4, we need tickets from Jan 1st of current year
-          dateFilter = { from: new Date(now.getFullYear(), 0, 1) }; // January 1st
+          // EXECUTIVE REPORTING MODE: PRECISE QUARTERLY DATA
+          maxSafePages = 50; // Should be enough for ~3000 tickets per quarter
+          
+          // Calculate exact quarter boundaries
+          const quarterNum = parseInt(filters.timeRange.substring(1)) - 1; // 0-3
+          const qStart = new Date(now.getFullYear(), quarterNum * 3, 1);
+          const qEnd = new Date(now.getFullYear(), (quarterNum + 1) * 3, 0, 23, 59, 59, 999);
+          
+          console.log(`\n📊 === EXECUTIVE REPORTING MODE for ${filters.timeRange.toUpperCase()} ===`);
+          console.log(`  Quarter: ${filters.timeRange.toUpperCase()} ${now.getFullYear()}`);
+          console.log(`  Start Date: ${qStart.toDateString()}`);
+          console.log(`  End Date: ${qEnd.toDateString()}`);
+          console.log(`  Expected Volume: ~3000 tickets`);
+          console.log(`  Max Pages: ${maxSafePages}`);
+          console.log(`  Using precise created_at filtering for exact quarter data`);
+          console.log(`📊 =====================================\n`);
+          
+          // For quarterly reports, we need to fetch ALL tickets and filter locally
+          // because Freshservice doesn't support created_at filtering in the standard API
+          // Setting date filter to null for Q reports to get all historical data
+          dateFilter = undefined;
+          console.log(`  Note: Fetching ALL tickets to ensure complete Q${quarterNum + 1} data`);
           break;
         default:
           maxSafePages = 60; // Fallback for unknown ranges
@@ -1878,6 +1933,23 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
       while (hasMorePages && page <= maxSafePages) {
         try {
           const ticketsResponse = await freshserviceApi.getTickets(page, 100, dateFilter);
+          
+          // For quarterly reports without date filter, we need to filter locally
+          if (isExecutiveReport && !dateFilter) {
+            const quarterNum = parseInt(filters.timeRange.substring(1)) - 1;
+            const qStart = new Date(now.getFullYear(), quarterNum * 3, 1);
+            const qEnd = new Date(now.getFullYear(), (quarterNum + 1) * 3, 0, 23, 59, 59, 999);
+            
+            const originalCount = ticketsResponse.tickets?.length || 0;
+            ticketsResponse.tickets = ticketsResponse.tickets?.filter(ticket => {
+              const createdDate = new Date(ticket.created_at);
+              return createdDate >= qStart && createdDate <= qEnd;
+            }) || [];
+            
+            if (originalCount !== ticketsResponse.tickets.length) {
+              console.log(`  Filtered page ${page}: ${originalCount} → ${ticketsResponse.tickets.length} Q${quarterNum + 1} tickets`);
+            }
+          }
           
           // Extract pagination info from first response and optimize page limit
           if (page === 1) {
@@ -1899,6 +1971,30 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
           }
           
           if (ticketsResponse.tickets && ticketsResponse.tickets.length > 0) {
+            // For executive reports, validate data integrity
+            if (isExecutiveReport) {
+              const quarterNum = parseInt(filters.timeRange.substring(1)) - 1;
+              const qStart = new Date(now.getFullYear(), quarterNum * 3, 1);
+              const qEnd = new Date(now.getFullYear(), (quarterNum + 1) * 3, 0, 23, 59, 59, 999);
+              
+              ticketsResponse.tickets.forEach(ticket => {
+                // Check for duplicates
+                if (fetchedTicketIds.has(ticket.id)) {
+                  duplicateCount++;
+                  console.warn(`⚠️ Duplicate ticket detected: #${ticket.id}`);
+                } else {
+                  fetchedTicketIds.add(ticket.id);
+                }
+                
+                // Verify ticket is in quarter range (should all be in range with new filtering)
+                const ticketDate = new Date(ticket.created_at);
+                if (ticketDate < qStart || ticketDate > qEnd) {
+                  outOfRangeCount++;
+                  console.warn(`⚠️ Unexpected out-of-range ticket: #${ticket.id} created on ${ticketDate.toDateString()}`);
+                }
+              });
+            }
+            
             allTickets = allTickets.concat(ticketsResponse.tickets);
             console.log(`✅ Page ${page}${totalPages ? `/${totalPages}` : ''}: ${ticketsResponse.tickets.length} tickets (Total: ${allTickets.length})`);
             
@@ -1907,8 +2003,38 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
               hasMorePages = false;
               console.log(`📊 Reached end based on API meta info (${totalPages} pages)`);
             } else if (ticketsResponse.tickets.length < 100) {
-              hasMorePages = false;
-              console.log(`📊 Reached end based on response size (${ticketsResponse.tickets.length} < 100)`);
+              // Track consecutive small pages
+              if (ticketsResponse.tickets.length < 20) {
+                consecutiveSmallPages++;
+                console.log(`⚠️ Small page detected: ${ticketsResponse.tickets.length} tickets (consecutive: ${consecutiveSmallPages})`);
+              } else {
+                consecutiveSmallPages = 0; // Reset counter for normal-sized pages
+              }
+              
+              // Only stop if we have meta information confirming this is the last page
+              // OR if we get very few tickets (less than 10)
+              // OR if we've seen too many consecutive small pages (loop protection)
+              const isDefinitelyLastPage = ticketsResponse.meta && 
+                (!ticketsResponse.meta.next_page || page >= ticketsResponse.meta.total_pages);
+              const veryFewTickets = ticketsResponse.tickets.length < 10;
+              const tooManySmallPages = consecutiveSmallPages >= MAX_CONSECUTIVE_SMALL_PAGES;
+              
+              if (isDefinitelyLastPage || veryFewTickets || tooManySmallPages) {
+                hasMorePages = false;
+                if (tooManySmallPages) {
+                  console.log(`🚫 Stopping pagination: ${consecutiveSmallPages} consecutive small pages detected (possible cache corruption)`);
+                  // Clear potentially corrupted cache entries
+                  for (let i = page - consecutiveSmallPages + 1; i <= page; i++) {
+                    apiCache.invalidatePattern(`tickets_${i}_`);
+                  }
+                } else {
+                  console.log(`📊 Reached end based on response size (${ticketsResponse.tickets.length} tickets, last page: ${isDefinitelyLastPage})`);
+                }
+              } else {
+                // Less than 100 tickets but not confirmed as last page - could be incomplete cache
+                console.log(`⚠️ Page ${page} has ${ticketsResponse.tickets.length} tickets but may not be last page. Continuing...`);
+                page++;
+              }
             } else if (allTickets.length >= 3000 && page >= 15) {
               // Early termination if we have enough quarterly data
               const threeMonthsAgo = new Date(Date.now() - (90 * 24 * 60 * 60 * 1000));
@@ -1946,25 +2072,29 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
         
         switch (filters.timeRange) {
           case 'today':
-            cacheTTL = 2 * 60 * 1000; // 2 minutes for today's data
+            cacheTTL = 1 * 60 * 1000; // 1 minute for today's data (most volatile)
             break;
           case 'week':
-            cacheTTL = 5 * 60 * 1000; // 5 minutes for week data
+            cacheTTL = 3 * 60 * 1000; // 3 minutes for last 7 days (moderate volatility)
             break;
           case 'month':
-            cacheTTL = 10 * 60 * 1000; // 10 minutes for month data
+            cacheTTL = 5 * 60 * 1000; // 5 minutes for last 4 weeks (less volatile)
             break;
           case 'quarter':
+            cacheTTL = 15 * 60 * 1000; // 15 minutes for current quarter
+            // Also cache as 'all_tickets' for quarters
+            apiCache.set('all_tickets', allTickets, 15 * 60 * 1000);
+            break;
           case 'q1':
           case 'q2':
           case 'q3':
           case 'q4':
-            cacheTTL = 30 * 60 * 1000; // 30 minutes for quarter data
-            // Also cache as 'all_tickets' for quarters
-            apiCache.set('all_tickets', allTickets, 30 * 60 * 1000);
+            cacheTTL = 60 * 60 * 1000; // 60 minutes for specific quarters (historical data, rarely changes)
+            // Also cache as 'all_tickets' for historical quarters
+            apiCache.set('all_tickets', allTickets, 60 * 60 * 1000);
             break;
           default:
-            cacheTTL = 5 * 60 * 1000; // Default 5 minutes
+            cacheTTL = 3 * 60 * 1000; // Default 3 minutes
         }
         
         apiCache.set(cacheKey, allTickets, cacheTTL);
@@ -1973,9 +2103,73 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
     }
 
     console.log(`🎉 Successfully fetched ${allTickets.length} total tickets (from ${page - 1} pages)`);
+    
+    // EXECUTIVE REPORTING DATA VALIDATION
+    if (isExecutiveReport) {
+      console.log(`\n📊 === EXECUTIVE REPORT DATA VALIDATION ===`);
+      console.log(`  Total Tickets Fetched: ${allTickets.length}`);
+      console.log(`  Unique Tickets: ${fetchedTicketIds.size}`);
+      console.log(`  Duplicate Tickets: ${duplicateCount}`);
+      console.log(`  Tickets Outside Quarter: ${outOfRangeCount} (expected - API returns all tickets from quarter start to present)`);
+      
+      // Validate quarter boundaries
+      const quarterNum = parseInt(filters.timeRange.substring(1)) - 1;
+      const qStart = new Date(now.getFullYear(), quarterNum * 3, 1);
+      const qEnd = new Date(now.getFullYear(), (quarterNum + 1) * 3, 0, 23, 59, 59, 999);
+      
+      // Filter to ONLY tickets in this quarter
+      const quarterTickets = allTickets.filter(ticket => {
+        const ticketDate = new Date(ticket.created_at);
+        return ticketDate >= qStart && ticketDate <= qEnd;
+      });
+      
+      console.log(`  Tickets in ${filters.timeRange.toUpperCase()}: ${quarterTickets.length}`);
+      
+      // Data completeness check
+      if (quarterTickets.length < 2500) {
+        console.warn(`⚠️  WARNING: Low ticket count for ${filters.timeRange.toUpperCase()} (${quarterTickets.length} < 2500 expected)`);
+        console.warn(`  This may indicate incomplete data fetching.`);
+        console.warn(`  Consider: 1) Increasing maxSafePages, 2) Checking API filters, 3) Verifying date ranges`);
+      } else if (quarterTickets.length > 3500) {
+        console.log(`✅ High ticket volume for ${filters.timeRange.toUpperCase()}: ${quarterTickets.length} tickets`);
+      } else {
+        console.log(`✅ Normal ticket volume for ${filters.timeRange.toUpperCase()}: ${quarterTickets.length} tickets`);
+      }
+      
+      // Monthly breakdown for quarter
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthlyBreakdown: Record<string, number> = {};
+      
+      quarterTickets.forEach(ticket => {
+        const month = new Date(ticket.created_at).getMonth();
+        const monthName = monthNames[month];
+        monthlyBreakdown[monthName] = (monthlyBreakdown[monthName] || 0) + 1;
+      });
+      
+      console.log(`  Monthly Breakdown:`);
+      Object.entries(monthlyBreakdown)
+        .sort((a, b) => monthNames.indexOf(a[0]) - monthNames.indexOf(b[0]))
+        .forEach(([month, count]) => {
+          console.log(`    ${month}: ${count} tickets`);
+        });
+      
+      // Replace allTickets with only quarter tickets for accurate reporting
+      console.log(`\n🎯 Filtering to ONLY ${filters.timeRange.toUpperCase()} tickets: ${allTickets.length} → ${quarterTickets.length}`);
+      allTickets = quarterTickets;
+      
+      // Audit log for compliance
+      console.log(`\n📝 === AUDIT LOG ===`);
+      console.log(`  Report Generated: ${new Date().toISOString()}`);
+      console.log(`  Quarter: ${filters.timeRange.toUpperCase()} ${now.getFullYear()}`);
+      console.log(`  Total Tickets: ${quarterTickets.length}`);
+      console.log(`  Data Source: Freshservice API`);
+      console.log(`  Pages Fetched: ${page - 1}`);
+      console.log(`  Cache TTL: 60 minutes`);
+      console.log(`  Data Integrity: ${duplicateCount === 0 ? '✅ VERIFIED' : `⚠️ ${duplicateCount} duplicates found`}`);
+      console.log(`📝 ==================\n`);
+    }
 
     // Quarterly data validation
-    const now = new Date();
     const threeMonthsAgo = new Date(now.getTime() - (90 * 24 * 60 * 60 * 1000));
     const quarterlyTickets = allTickets.filter(ticket => new Date(ticket.created_at) >= threeMonthsAgo);
     const quarterlyPercentage = allTickets.length > 0 ? Math.round((quarterlyTickets.length / allTickets.length) * 100) : 0;
@@ -2586,8 +2780,13 @@ export async function debugFindAgent(searchName: string): Promise<{ success: boo
                 allTickets = allTickets.concat(ticketsResponse.tickets);
                 console.log(`     Page ${page}: ${ticketsResponse.tickets.length} tickets (Total: ${allTickets.length})`);
                 
-                if (ticketsResponse.tickets.length < 100) {
+                // Check if this is actually the last page
+                const isLastPage = ticketsResponse.meta && 
+                  (!ticketsResponse.meta.next_page || page >= ticketsResponse.meta.total_pages);
+                
+                if (ticketsResponse.tickets.length < 100 && (isLastPage || ticketsResponse.tickets.length < 10)) {
                   hasMorePages = false;
+                  console.log(`     Reached end: ${ticketsResponse.tickets.length} tickets on page ${page}`);
                 } else {
                   page++;
                 }
@@ -2718,6 +2917,128 @@ export async function debugFindAgent(searchName: string): Promise<{ success: boo
     return { 
       success: false, 
       error: error.message || 'Failed to search for agent' 
+    };
+  }
+}
+
+/**
+ * Export executive report data for a specific quarter
+ * Returns comprehensive metrics suitable for C-level reporting
+ */
+export async function exportExecutiveReport(quarter: 'q1' | 'q2' | 'q3' | 'q4'): Promise<{
+  success: boolean;
+  data?: {
+    quarter: string;
+    year: number;
+    dateRange: { start: string; end: string };
+    metrics: {
+      totalTickets: number;
+      resolvedTickets: number;
+      openTickets: number;
+      resolutionRate: number;
+      avgResolutionTime: string;
+      slaCompliance: number;
+      monthlyBreakdown: Record<string, number>;
+      priorityBreakdown: Record<string, number>;
+      categoryBreakdown: Record<string, number>;
+    };
+    dataQuality: {
+      completeness: 'complete' | 'partial' | 'incomplete';
+      confidence: number; // 0-100
+      warnings: string[];
+    };
+    generatedAt: string;
+  };
+  error?: string;
+}> {
+  try {
+    console.log(`\n📊 === GENERATING EXECUTIVE REPORT FOR ${quarter.toUpperCase()} ===`);
+    
+    // Fetch data with executive reporting flag
+    const result = await fetchDashboardData({ 
+      timeRange: quarter,
+      forceRefresh: true // Always use fresh data for executive reports
+    });
+    
+    if (!result.success || !result.data) {
+      throw new Error('Failed to fetch dashboard data');
+    }
+    
+    const now = new Date();
+    const quarterNum = parseInt(quarter.substring(1)) - 1;
+    const qStart = new Date(now.getFullYear(), quarterNum * 3, 1);
+    const qEnd = new Date(now.getFullYear(), (quarterNum + 1) * 3, 0, 23, 59, 59, 999);
+    
+    // Calculate data quality metrics
+    const totalTickets = result.data.stats.openTickets + (result.data.stats.resolvedToday || 0);
+    const expectedTickets = 3000; // Based on your ~3000 tickets per quarter
+    const completenessScore = Math.min(100, (totalTickets / expectedTickets) * 100);
+    
+    const warnings: string[] = [];
+    if (totalTickets < 2500) {
+      warnings.push(`Low ticket count: ${totalTickets} (expected ~3000)`);
+    }
+    if (completenessScore < 80) {
+      warnings.push(`Data completeness below 80%: ${completenessScore.toFixed(1)}%`);
+    }
+    
+    // Build monthly breakdown
+    const monthlyBreakdown: Record<string, number> = {};
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    for (let i = 0; i < 3; i++) {
+      const monthIndex = quarterNum * 3 + i;
+      monthlyBreakdown[monthNames[monthIndex]] = 0;
+    }
+    
+    // Build priority breakdown
+    const priorityBreakdown: Record<string, number> = {};
+    result.data.ticketsByPriority.forEach(item => {
+      priorityBreakdown[item.name] = item.value;
+    });
+    
+    // Build category breakdown
+    const categoryBreakdown: Record<string, number> = {};
+    result.data.ticketsByCategory.forEach(item => {
+      categoryBreakdown[item.name] = item.value;
+    });
+    
+    const reportData = {
+      quarter: quarter.toUpperCase(),
+      year: now.getFullYear(),
+      dateRange: {
+        start: qStart.toISOString(),
+        end: qEnd.toISOString()
+      },
+      metrics: {
+        totalTickets,
+        resolvedTickets: result.data.stats.resolvedToday || 0,
+        openTickets: result.data.stats.openTickets,
+        resolutionRate: result.data.stats.resolutionRate,
+        avgResolutionTime: result.data.stats.avgResolutionTime,
+        slaCompliance: 100 - ((result.data.stats.slaBreaches / totalTickets) * 100),
+        monthlyBreakdown,
+        priorityBreakdown,
+        categoryBreakdown
+      },
+      dataQuality: {
+        completeness: completenessScore >= 90 ? 'complete' : 
+                      completenessScore >= 70 ? 'partial' : 'incomplete',
+        confidence: Math.round(completenessScore),
+        warnings
+      },
+      generatedAt: new Date().toISOString()
+    };
+    
+    console.log(`✅ Executive report generated successfully`);
+    console.log(`📊 Total tickets: ${totalTickets}`);
+    console.log(`📊 Data confidence: ${completenessScore.toFixed(1)}%`);
+    
+    return { success: true, data: reportData };
+  } catch (error: any) {
+    console.error('❌ Failed to generate executive report:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Failed to generate executive report' 
     };
   }
 }

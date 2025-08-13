@@ -5,9 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
 import { Button } from "./ui/button"
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, Treemap } from 'recharts'
 import { formatNumber } from '../lib/utils'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { DashboardData, DashboardFilters, fetchDashboardData, fetchAgentList, testApiConnection, clearDashboardCache, getCacheStatus } from '../actions/dashboard'
 import { Users, Clock, AlertTriangle, CheckCircle, Activity, RotateCcw, Play, Pause } from 'lucide-react'
+import dynamic from 'next/dynamic'
 
 // Modern color palette inspired by shadcn/ui
 const COLORS = {
@@ -110,10 +111,10 @@ const mockData: DashboardData = {
     { name: '> 3 days', value: 8 },
   ],
   agentPerformance: [
-    { id: 1, name: 'Alice Johnson', tickets: 34, resolution: 82, avgResponseTime: '2.1h', workload: 'Moderate' },
-    { id: 2, name: 'Bob Smith', tickets: 27, resolution: 75, avgResponseTime: '3.2h', workload: 'Light' },
-    { id: 3, name: 'Charlie Brown', tickets: 42, resolution: 91, avgResponseTime: '1.8h', workload: 'Heavy' },
-    { id: 4, name: 'Diana Ross', tickets: 19, resolution: 68, avgResponseTime: '4.1h', workload: 'Light' },
+    { id: 1, name: 'Alice Johnson', tickets: 34, resolution: 82, avgResponseTime: '2.1h', avgResolutionTime: '6.3h', slaCompliance: 92, firstCallResolution: 78, escalationRate: 5, reopenedRate: 3, urgentTicketPerformance: 80, highPriorityResolution: 85, workload: 'Moderate', peakTimePerformance: 88, qualityScore: 84, efficiencyScore: 81, overallScore: 83 },
+    { id: 2, name: 'Bob Smith', tickets: 27, resolution: 75, avgResponseTime: '3.2h', avgResolutionTime: '8.1h', slaCompliance: 89, firstCallResolution: 72, escalationRate: 7, reopenedRate: 4, urgentTicketPerformance: 74, highPriorityResolution: 78, workload: 'Light', peakTimePerformance: 79, qualityScore: 76, efficiencyScore: 74, overallScore: 75 },
+    { id: 3, name: 'Charlie Brown', tickets: 42, resolution: 91, avgResponseTime: '1.8h', avgResolutionTime: '5.4h', slaCompliance: 95, firstCallResolution: 85, escalationRate: 3, reopenedRate: 2, urgentTicketPerformance: 88, highPriorityResolution: 90, workload: 'Heavy', peakTimePerformance: 86, qualityScore: 90, efficiencyScore: 88, overallScore: 89 },
+    { id: 4, name: 'Diana Ross', tickets: 19, resolution: 68, avgResponseTime: '4.1h', avgResolutionTime: '9.0h', slaCompliance: 85, firstCallResolution: 65, escalationRate: 9, reopenedRate: 6, urgentTicketPerformance: 60, highPriorityResolution: 64, workload: 'Light', peakTimePerformance: 70, qualityScore: 68, efficiencyScore: 67, overallScore: 67 },
   ],
   agentWorkload: [
     { name: 'Light', value: 3 },
@@ -127,6 +128,9 @@ const mockData: DashboardData = {
     avgResponseTime: '2.4h',
     customerSatisfaction: '87%',
     slaBreaches: 5,
+    resolutionRate: 82,
+    avgResolutionTime: '7.2h',
+    firstCallResolution: 74,
     overdueTickets: 12,
     unassignedTickets: 3,
     totalAgents: 8,
@@ -197,8 +201,8 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
   const [agentsLoading, setAgentsLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0) // Key to force chart re-animation
 
-  // Caching state
-  const [cachedData, setCachedData] = useState<Record<string, DashboardData>>({})
+  // Enhanced caching state with TTL
+  const [cachedData, setCachedData] = useState<Record<string, { data: DashboardData; timestamp: number; ttl: number }>>({})
 
   // Auto-refresh functionality for TV displays
   const [autoRefresh, setAutoRefresh] = useState(false)
@@ -228,26 +232,15 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
     loadAgents()
   }, [])
 
-  // Auto-refresh when filters change (with debounce)
+  // DISABLED - Auto-refresh when filters change to prevent infinite loops
+  // This was causing the infinite API call loop
+  // Users can manually refresh using the refresh button
+  /*
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      if (!isRefreshing) {
-        // Use cache if available for the current filter set
-        const cacheKey = `${filters.agentId}-${filters.timeRange}`
-        if (cachedData[cacheKey]) {
-          console.log(`✅ Using cached data for key: ${cacheKey}`)
-          setDashboardData(cachedData[cacheKey])
-          setRefreshKey(prev => prev + 1) // Still animate charts
-          return // Skip fetch
-        }
-        
-        console.log('🔄 Filters changed, refreshing data...', filters)
-        handleRefresh()
-      }
-    }, 300) // 300ms debounce
-
-    return () => clearTimeout(timeoutId)
-  }, [filters.agentId, filters.timeRange]) // Reruns when filters change
+    // Commented out to prevent infinite loops
+    // Manual refresh only for now
+  }, [filters.agentId, filters.timeRange])
+  */
 
   // Auto-refresh timer effect
   useEffect(() => {
@@ -279,17 +272,16 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
     }
   }, [autoRefresh, refreshInterval, currentError])
 
-  // Initial data fetch effect - fetch data if not provided by server
+  // DISABLE ALL AUTOMATIC DATA FETCHING TO PREVENT LOOPS
+  // Users must manually click refresh to get data
+  
+  // Initial data setup - NO AUTOMATIC FETCH
   useEffect(() => {
-    // Only fetch if we don't have initial data or if there was an error
-    if (!initialData || currentError) {
-      console.log('🎯 No initial data or error detected, fetching fresh data...')
-      handleRefresh()
-    } else if (initialData) {
-      // Pre-warm the cache with initial server-side data
-      const cacheKey = `${filters.agentId}-${filters.timeRange}`
-      setCachedData(prev => ({ ...prev, [cacheKey]: initialData }))
-      console.log(`🧠 Cache pre-warmed with initial data for key: ${cacheKey}`)
+    if (initialData) {
+      // Use initial data if provided
+      console.log('📊 Using server-provided initial data')
+    } else {
+      console.log('⚠️ No initial data - click refresh button to load data')
     }
   }, []) // Run once on mount
 
@@ -300,7 +292,33 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
+  // Clean up expired cache entries periodically - DISABLED TO PREVENT LOOPS
+  // useEffect(() => {
+  //   const cleanupInterval = setInterval(() => {
+  //     setCachedData(prev => {
+  //       const now = Date.now()
+  //       const cleaned = Object.entries(prev).reduce((acc, [key, entry]) => {
+  //         if (now - entry.timestamp < entry.ttl) {
+  //           acc[key] = entry
+  //         } else {
+  //           console.log(`🧹 Cleaned expired cache entry: ${key}`)
+  //         }
+  //         return acc
+  //       }, {} as typeof prev)
+  //       return cleaned
+  //     })
+  //   }, 60000) // Clean up every minute
+
+  //   return () => clearInterval(cleanupInterval)
+  // }, [])
+
   const handleRefresh = async (forceRefresh = false) => {
+    // Prevent concurrent refreshes
+    if (isRefreshing) {
+      console.log('⏸️ Refresh already in progress, skipping...')
+      return
+    }
+    
     // If force-refreshing, clear the client-side cache
     if (forceRefresh) {
       console.log('💥 Force refresh: Clearing client-side cache.')
@@ -318,11 +336,24 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
       
       if (result.success && result.data) {
         setDashboardData(result.data)
-        // Store the new data in the client-side cache
+        // Store the new data in the client-side cache with appropriate TTL
         const cacheKey = `${filters.agentId}-${filters.timeRange}`
         if (result.data) {
-          setCachedData(prevCache => ({ ...prevCache, [cacheKey]: result.data as DashboardData }))
-          console.log(`🧠 Stored fresh data in cache for key: ${cacheKey}`)
+          const ttl = filters.timeRange === 'today' ? 60000 : // 1 min for today
+                      filters.timeRange === 'week' ? 180000 : // 3 min for week
+                      filters.timeRange === 'month' ? 300000 : // 5 min for month
+                      filters.timeRange === 'quarter' ? 900000 : // 15 min for current quarter
+                      filters.timeRange.startsWith('q') ? 3600000 : // 60 min for specific quarters
+                      180000; // 3 min default
+          setCachedData(prevCache => ({ 
+            ...prevCache, 
+            [cacheKey]: { 
+              data: result.data as DashboardData, 
+              timestamp: Date.now(), 
+              ttl 
+            } 
+          }))
+          console.log(`🧠 Stored fresh data in cache for key: ${cacheKey} (TTL: ${ttl/60000} min)`)
         }
         
         setIsUsingMockData(false)
@@ -419,6 +450,8 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
     { name: 'No Data', value: 0, color: COLORS.chart.gray }
   ]
 
+  const AIChat = dynamic(() => import('./AIChat'), { ssr: false })
+
   return (
     <div className="min-h-screen bg-background">
       {/* Compact Header for TV - shadcn style */}
@@ -475,7 +508,9 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                   value={filters.agentId}
                   onChange={(e) => {
                     const value = e.target.value;
-                    setFilters({...filters, agentId: value === 'all' ? 'all' : Number(value)})
+                    const agentId = value === 'all' ? 'all' : Number(value);
+                    setFilters(prev => ({ ...prev, agentId }));
+                    // DO NOT AUTO-REFRESH - User must click refresh button
                   }}
                   disabled={agentsLoading}
                   className="h-8 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
@@ -501,12 +536,16 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
                 <span className="text-sm font-medium text-muted-foreground">Period:</span>
                 <select 
                   value={filters.timeRange}
-                  onChange={(e) => setFilters({...filters, timeRange: e.target.value as any})}
+                  onChange={(e) => {
+                    const timeRange = e.target.value as typeof filters.timeRange;
+                    setFilters(prev => ({ ...prev, timeRange }));
+                    // DO NOT AUTO-REFRESH - User must click refresh button
+                  }}
                   className="h-8 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 >
                   <option value="today">Today</option>
-                  <option value="week">This Week</option>
-                  <option value="month">This Month</option>
+                  <option value="week">Last 7 Days</option>
+                  <option value="month">Last 4 Weeks</option>
                   <option value="quarter">This Quarter</option>
                   <option value="q1">Q1 (Jan-Mar)</option>
                   <option value="q2">Q2 (Apr-Jun)</option>
@@ -816,8 +855,8 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
             <CardHeader className="pb-3">
               <CardTitle className="text-lg">
                 {filters.timeRange === 'today' ? 'Today\'s Ticket Trend' :
-                 filters.timeRange === 'week' ? 'Weekly Ticket Trend' :
-                 filters.timeRange === 'month' ? 'Monthly Ticket Trend' :
+                 filters.timeRange === 'week' ? 'Last 7 Days Trend' :
+                 filters.timeRange === 'month' ? 'Last 4 Weeks Trend' :
                  'Quarterly Ticket Trend'}
               </CardTitle>
             </CardHeader>
@@ -1134,6 +1173,9 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Floating AI chat tied to current dashboard context */}
+      <AIChat context={dashboardData} filters={filters} />
     </div>
   )
 } 

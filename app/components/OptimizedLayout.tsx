@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import { Sidebar } from './Sidebar'
 import { Button } from './ui/button'
 import { RotateCcw, Clock, Play, Pause, RefreshCw, Menu } from 'lucide-react'
@@ -13,6 +14,7 @@ interface OptimizedLayoutProps {
 }
 
 export function OptimizedLayout({ children }: OptimizedLayoutProps) {
+  const AIChat = dynamic(() => import('./AIChat'), { ssr: false })
   const {
     dashboardData,
     isLoading,
@@ -166,8 +168,8 @@ export function OptimizedLayout({ children }: OptimizedLayoutProps) {
                   disabled={isLoading}
                 >
                   <option value="today">Today</option>
-                  <option value="week">This Week</option>
-                  <option value="month">This Month</option>
+                  <option value="week">Last 7 Days</option>
+                  <option value="month">Last 4 Weeks</option>
                   <option value="quarter">This Quarter</option>
                   <option value="q1">Q1 (Jan-Mar)</option>
                   <option value="q2">Q2 (Apr-Jun)</option>
@@ -302,6 +304,11 @@ export function OptimizedLayout({ children }: OptimizedLayoutProps) {
             </div>
           )}
         </main>
+
+        {/* Floating AI chat for analysis across pages using the data context */}
+        {dashboardData && (
+          <AIChat context={dashboardData} filters={filters} />
+        )}
       </div>
     </div>
   )

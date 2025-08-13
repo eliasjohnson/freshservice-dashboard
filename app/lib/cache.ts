@@ -13,14 +13,24 @@ class APICache {
   private cache = new Map<string, CacheEntry<any>>();
   private readonly DEFAULT_TTL = 5 * 60 * 1000; // 5 minutes
   private readonly TICKETS_TTL = 3 * 60 * 1000; // 3 minutes for tickets (they change more frequently)
+  private readonly MAX_CACHE_SIZE = 100; // Maximum number of cache entries
+  private readonly MAX_CACHE_MEMORY = 10 * 1024 * 1024; // 10MB max cache size
   
   set<T>(key: string, data: T, ttl?: number): void {
+    // Check cache size limits
+    this.enforceMemoryLimit();
+    
     const entry: CacheEntry<T> = {
       data,
       timestamp: Date.now(),
       ttl: ttl || this.DEFAULT_TTL
     };
     this.cache.set(key, entry);
+    
+    // If cache is too large, remove oldest entries
+    if (this.cache.size > this.MAX_CACHE_SIZE) {
+      this.evictOldestEntries();
+    }
   }
   
   get<T>(key: string): T | null {
@@ -56,10 +66,49 @@ class APICache {
   }
   
   // Get cache stats
-  getStats(): { entries: number; totalSize: string } {
+  getStats(): { entries: number; totalSize: string; hitRate?: number } {
     const entries = this.cache.size;
     const totalSize = `${Math.round(JSON.stringify([...this.cache.values()]).length / 1024)}KB`;
     return { entries, totalSize };
+  }
+  
+  // Evict oldest entries when cache is too large
+  private evictOldestEntries(): void {
+    const sortedEntries = Array.from(this.cache.entries())
+      .sort((a, b) => a[1].timestamp - b[1].timestamp);
+    
+    // Remove oldest 20% of entries
+    const toRemove = Math.floor(this.MAX_CACHE_SIZE * 0.2);
+    for (let i = 0; i < toRemove && i < sortedEntries.length; i++) {
+      this.cache.delete(sortedEntries[i][0]);
+    }
+  }
+  
+  // Enforce memory limits
+  private enforceMemoryLimit(): void {
+    const cacheSize = JSON.stringify([...this.cache.values()]).length;
+    if (cacheSize > this.MAX_CACHE_MEMORY) {
+      // Clear 30% of cache if memory limit exceeded
+      const entriesToKeep = Math.floor(this.cache.size * 0.7);
+      const sortedEntries = Array.from(this.cache.entries())
+        .sort((a, b) => b[1].timestamp - a[1].timestamp)
+        .slice(0, entriesToKeep);
+      
+      this.cache.clear();
+      sortedEntries.forEach(([key, value]) => this.cache.set(key, value));
+    }
+  }
+  
+  // Invalidate cache entries matching a pattern
+  invalidatePattern(pattern: string): number {
+    let invalidated = 0;
+    for (const key of this.cache.keys()) {
+      if (key.includes(pattern)) {
+        this.cache.delete(key);
+        invalidated++;
+      }
+    }
+    return invalidated;
   }
 }
 

@@ -275,8 +275,8 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                     <CheckCircle className="mr-1.5 h-3.5 w-3.5 text-green-500" />
                     <span className="text-xs">
                       {timeRange === 'today' ? 'Today\'s' : 
-                       timeRange === 'week' ? 'This Week\'s' : 
-                       timeRange === 'month' ? 'This Month\'s' : 
+                       timeRange === 'week' ? 'Last 7 Days\'' : 
+                       timeRange === 'month' ? 'Last 4 Weeks\'' : 
                        timeRange === 'quarter' ? 'This Quarter\'s' :
                        timeRange === 'q1' ? 'Q1' :
                        timeRange === 'q2' ? 'Q2' :
@@ -318,7 +318,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
           <Card className="dark:bg-slate-950/50 border-slate-800">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-medium">Tickets by Status</CardTitle>
-              <p className="text-xs text-muted-foreground">Current status distribution for {timeRange === 'today' ? 'today' : timeRange === 'week' ? 'this week' : timeRange === 'month' ? 'this month' : timeRange === 'quarter' ? 'this quarter' : timeRange === 'q1' ? 'Q1 (Jan-Mar)' : timeRange === 'q2' ? 'Q2 (Apr-Jun)' : timeRange === 'q3' ? 'Q3 (Jul-Sep)' : timeRange === 'q4' ? 'Q4 (Oct-Dec)' : 'selected period'}</p>
+              <p className="text-xs text-muted-foreground">Current status distribution for {timeRange === 'today' ? 'today' : timeRange === 'week' ? 'the last 7 days' : timeRange === 'month' ? 'the last 4 weeks' : timeRange === 'quarter' ? 'this quarter' : timeRange === 'q1' ? 'Q1 (Jan-Mar)' : timeRange === 'q2' ? 'Q2 (Apr-Jun)' : timeRange === 'q3' ? 'Q3 (Jul-Sep)' : timeRange === 'q4' ? 'Q4 (Oct-Dec)' : 'selected period'}</p>
             </CardHeader>
             <CardContent className="pt-2 pb-2 px-4">
               <ChartContainer

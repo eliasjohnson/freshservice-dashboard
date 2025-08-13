@@ -194,8 +194,8 @@ export function DashboardLayout({ children, initialData, error }: DashboardLayou
                   className="h-8 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 >
                   <option value="today">Today</option>
-                  <option value="week">This Week</option>
-                  <option value="month">This Month</option>
+                  <option value="week">Last 7 Days</option>
+                  <option value="month">Last 4 Weeks</option>
                   <option value="quarter">This Quarter</option>
                   <option value="q1">Q1 (Jan-Mar)</option>
                   <option value="q2">Q2 (Apr-Jun)</option>

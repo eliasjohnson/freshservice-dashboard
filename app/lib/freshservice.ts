@@ -234,14 +234,41 @@ export class FreshserviceApiClient {
    * Get tickets with caching and rate limiting
    * PRO Plan: 120 calls per minute for tickets
    */
-  async getTickets(page: number = 1, perPage: number = 100, dateFilter?: { from?: Date; to?: Date }): Promise<TicketResponse> {
+  async getTickets(page: number = 1, perPage: number = 100, dateFilter?: { from?: Date; to?: Date; useCreatedAt?: boolean }): Promise<TicketResponse> {
     const cacheKey = apiCache.getTicketsCacheKey(page, perPage);
     
     // Check cache first
     const cachedData = apiCache.get<TicketResponse>(cacheKey);
     if (cachedData) {
-      console.log(`📦 Cache HIT: tickets page ${page} (${cachedData.tickets?.length || 0} tickets)`);
-      return cachedData;
+      // Validate cached data integrity - don't use incomplete cached pages
+      const ticketCount = cachedData.tickets?.length || 0;
+      
+      // If we have meta information, validate against it
+      if (cachedData.meta) {
+        const isLastPage = !cachedData.meta.next_page || page >= cachedData.meta.total_pages;
+        const expectedCount = isLastPage ? 
+          (cachedData.meta.total_entries % perPage) || perPage : 
+          perPage;
+        
+        // If ticket count doesn't match expected, invalidate cache
+        if (!isLastPage && ticketCount < perPage && ticketCount !== expectedCount) {
+          console.log(`⚠️ Cache INVALID: page ${page} has ${ticketCount} tickets, expected ${expectedCount}. Fetching fresh data...`);
+          apiCache.invalidatePattern(`tickets_${page}_`);
+        } else {
+          console.log(`📦 Cache HIT: tickets page ${page} (${ticketCount} tickets)`);
+          return cachedData;
+        }
+      } else {
+        // Without meta, be more cautious about incomplete pages
+        if (ticketCount > 0 && ticketCount < perPage / 2) {
+          // If we have less than half the expected tickets, likely incomplete
+          console.log(`⚠️ Cache SUSPICIOUS: page ${page} has only ${ticketCount} tickets. Fetching fresh data...`);
+          apiCache.invalidatePattern(`tickets_${page}_`);
+        } else {
+          console.log(`📦 Cache HIT: tickets page ${page} (${ticketCount} tickets)`);
+          return cachedData;
+        }
+      }
     }
     
     // Check rate limits before making request
@@ -259,12 +286,18 @@ export class FreshserviceApiClient {
       
       // Add date filtering to reduce API calls
       if (dateFilter) {
-        if (dateFilter.from) {
+        if (dateFilter.useCreatedAt && dateFilter.from && dateFilter.to) {
+          // For quarterly reports, use a date 1 year before the quarter start
+          // This ensures we get all tickets created in the quarter, even if not recently updated
+          const oneYearBefore = new Date(dateFilter.from);
+          oneYearBefore.setFullYear(oneYearBefore.getFullYear() - 1);
+          params.updated_since = oneYearBefore.toISOString();
+          
+          console.log(`🎯 Fetching tickets updated since ${oneYearBefore.toISOString().split('T')[0]} (1 year before quarter)`);
+          console.log(`   Will filter locally for created_at between ${dateFilter.from.toISOString().split('T')[0]} and ${dateFilter.to.toISOString().split('T')[0]}`);
+        } else if (dateFilter.from) {
+          // For non-quarterly views, use updated_since to reduce data
           params.updated_since = dateFilter.from.toISOString();
-        }
-        if (dateFilter.to) {
-          // Note: Freshservice doesn't have 'updated_before', so we'll filter in memory
-          // But we can use updated_since to at least reduce the data fetched
         }
       }
       
@@ -272,9 +305,27 @@ export class FreshserviceApiClient {
         params
       });
       
-      // Cache the response
-      apiCache.setTickets(cacheKey, response.data);
-      console.log(`💾 Cached tickets page ${page}`);
+      // If we have date filtering for quarterly reports, filter the response
+      if (dateFilter && dateFilter.useCreatedAt && dateFilter.from && dateFilter.to) {
+        const originalCount = response.data.tickets?.length || 0;
+        response.data.tickets = response.data.tickets?.filter(ticket => {
+          const createdDate = new Date(ticket.created_at);
+          return createdDate >= dateFilter.from! && createdDate <= dateFilter.to!;
+        }) || [];
+        
+        const filteredCount = response.data.tickets.length;
+        if (originalCount !== filteredCount) {
+          console.log(`🎯 Filtered tickets by created_at: ${originalCount} → ${filteredCount} tickets`);
+        }
+      }
+      
+      // Validate response before caching
+      if (response.data.tickets && response.data.tickets.length > 0) {
+        apiCache.setTickets(cacheKey, response.data);
+        console.log(`💾 Cached tickets page ${page} with ${response.data.tickets.length} tickets`);
+      } else {
+        console.log(`⚠️ Not caching empty page ${page}`);
+      }
       
       return response.data;
     } catch (error) {
