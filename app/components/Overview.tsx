@@ -151,18 +151,16 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
   const trendInfo = getTrendChartInfo(timeRange);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] overflow-y-auto pb-16 overview-container">
-      <div className="space-y-3">
-        {/* KPI row: uniform heights, improved typographic scale */}
-        <div className="kpi-grid">
-          <Card className="h-[120px] overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-4">
-              <CardTitle className="text-sm font-medium text-muted-foreground truncate">Active Tickets</CardTitle>
+    <div className="dashboard-content">
+      <div className="kpi-cards">
+          <Card className="kpi-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-4 chart-card-header">
+              <CardTitle className="text-sm font-medium text-muted-foreground no-truncate">Active Tickets</CardTitle>
               <Activity className="h-4 w-4 text-muted-foreground/70 flex-shrink-0" />
             </CardHeader>
             <CardContent className="px-4">
               <div className="text-2xl font-semibold">{formatNumber(data.stats.openTickets)}</div>
-              <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+              <p className="text-xs text-muted-foreground mt-1 readable-text">
                 {timeRange === 'today' ? 'Active today' : 
                  timeRange === 'week' ? 'From this week' : 
                  timeRange === 'month' ? 'From this month' : 
@@ -175,14 +173,14 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
               </p>
             </CardContent>
           </Card>
-          <Card className="h-[120px] overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-4">
-              <CardTitle className="text-sm font-medium text-muted-foreground truncate">Resolution Rate</CardTitle>
+          <Card className="kpi-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-4 chart-card-header">
+              <CardTitle className="text-sm font-medium text-muted-foreground no-truncate">Resolution Rate</CardTitle>
               <Target className="h-4 w-4 text-muted-foreground/70 flex-shrink-0" />
             </CardHeader>
             <CardContent className="px-4">
               <div className="text-2xl font-semibold text-green-500">{resolutionRate}%</div>
-              <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+              <p className="text-xs text-muted-foreground mt-1 readable-text">
                 {timeRange === 'today' ? 'Resolved today' : 
                  timeRange === 'week' ? 'This week\'s rate' : 
                  timeRange === 'month' ? 'This month\'s rate' : 
@@ -195,14 +193,14 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
               </p>
             </CardContent>
           </Card>
-          <Card className="h-[120px] overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-4">
-              <CardTitle className="text-sm font-medium text-muted-foreground truncate">Avg Response Time</CardTitle>
+          <Card className="kpi-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-4 chart-card-header">
+              <CardTitle className="text-sm font-medium text-muted-foreground no-truncate">Avg Response Time</CardTitle>
               <Clock className="h-4 w-4 text-muted-foreground/70 flex-shrink-0" />
             </CardHeader>
             <CardContent className="px-4">
               <div className="text-2xl font-semibold">{data.stats.avgResponseTime}</div>
-              <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+              <p className="text-xs text-muted-foreground mt-1 readable-text">
                 {timeRange === 'today' ? 'Today\'s average' : 
                  timeRange === 'week' ? 'This week\'s avg' : 
                  timeRange === 'month' ? 'This month\'s avg' : 
@@ -215,9 +213,9 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
               </p>
             </CardContent>
           </Card>
-          <Card className="h-[120px] overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-4">
-              <CardTitle className="text-sm font-medium text-muted-foreground truncate">SLA Performance</CardTitle>
+          <Card className="kpi-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-4 chart-card-header">
+              <CardTitle className="text-sm font-medium text-muted-foreground no-truncate">SLA Performance</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground/70 flex-shrink-0" />
             </CardHeader>
             <CardContent className="px-4">
@@ -228,7 +226,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                   <span className="text-green-500">On track</span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+              <p className="text-xs text-muted-foreground mt-1 readable-text">
                 {timeRange === 'today' ? 'Today\'s SLA' : 
                  timeRange === 'week' ? 'This week\'s SLA' : 
                  timeRange === 'month' ? 'This month\'s SLA' : 
@@ -243,26 +241,28 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
           </Card>
         </div>
 
-        {/* Main Charts Layout - Symmetric Grid with Fixed Heights */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          {/* Left Column - Balanced Heights */}
-          <div className="flex flex-col gap-4">
+        {/* Main Charts Layout */}
+        <div className="chart-grid">
+          {/* Left Column */}
+          <div className="chart-column">
             {/* Ticket Lifecycle Funnel */}
-            <Card className="h-[280px]">
-              <CardHeader className="pb-2 px-4">
+            <Card className="chart-card">
+              <CardHeader className="pb-2 px-4 chart-card-header">
                 <CardTitle className="text-base font-medium">Ticket Lifecycle Funnel</CardTitle>
                 <p className="text-xs text-muted-foreground">Track tickets through each stage of resolution</p>
               </CardHeader>
-              <CardContent className="px-4 h-[215px]">
-                <FunnelChart 
-                  data={data.ticketLifecycleFunnel} 
-                />
+              <CardContent className="chart-card-content">
+                <div className="chart-container">
+                  <FunnelChart 
+                    data={data.ticketLifecycleFunnel} 
+                  />
+                </div>
               </CardContent>
             </Card>
           
             {/* Additional Metrics */}
-            <Card className="h-[160px] overflow-hidden">
-              <CardHeader className="pb-2 px-4">
+            <Card className="chart-card">
+              <CardHeader className="pb-2 px-4 chart-card-header">
                 <CardTitle className="text-base font-medium">Additional Metrics</CardTitle>
                 <p className="text-xs text-muted-foreground">Complete performance breakdown</p>
               </CardHeader>
@@ -271,7 +271,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                 <div className="space-y-1">
                   <div className="flex items-start">
                     <CheckCircle className="mr-1 h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
-                    <span className="text-xs leading-tight line-clamp-2">
+                    <span className="text-xs leading-tight readable-text">
                       {timeRange === 'today' ? 'Today\'s' : 
                        timeRange === 'week' ? 'Week' : 
                        timeRange === 'month' ? 'Month' : 
@@ -301,7 +301,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                 <div className="space-y-1">
                   <div className="flex items-start">
                     <Zap className="mr-1 h-3 w-3 text-purple-500 mt-0.5 flex-shrink-0" />
-                    <span className="text-xs leading-tight line-clamp-2">First Call Resolution</span>
+                    <span className="text-xs leading-tight readable-text">First Call Resolution</span>
                   </div>
                   <div className="text-xl font-semibold text-purple-500">{data.stats.firstCallResolution}%</div>
                 </div>
@@ -310,12 +310,12 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
           </Card>
           
             {/* Tickets by Status with Insights */}
-            <Card className="h-[260px]">
-              <CardHeader className="pb-2 px-4">
+            <Card className="chart-card">
+              <CardHeader className="pb-2 px-4 chart-card-header">
                 <CardTitle className="text-base font-medium">Tickets by Status</CardTitle>
                 <p className="text-xs text-muted-foreground">Current status distribution</p>
               </CardHeader>
-              <CardContent className="px-4 pb-3">
+              <CardContent className="chart-card-content">
               <ChartContainer
                 key={`status-bar-${colorRefreshKey}`}
                 config={{
@@ -336,7 +336,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                     color: "hsl(262.1, 83.3%, 57.8%)",
                   },
                 }}
-                className="h-[170px] w-full"
+                className="chart-container"
               >
                 <BarChart data={safeStatusData}>
                   <CartesianGrid vertical={false} />
@@ -345,13 +345,17 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                     tickLine={false}
                     tickMargin={10}
                     axisLine={false}
-                    fontSize={11}
+                    fontSize={12}
+                    angle={-45}
+                    textAnchor="end"
+                    height={60}
+                    interval={0}
                   />
                   <YAxis
                     tickLine={false}
                     axisLine={false}
                     tickMargin={8}
-                    fontSize={11}
+                    fontSize={12}
                   />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Bar dataKey="value" radius={4}>
@@ -380,15 +384,15 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
           </Card>
           </div>
 
-          {/* Right Column - Matching Heights */}
-          <div className="flex flex-col gap-4">
+          {/* Right Column */}
+          <div className="chart-column">
             {/* Funnel Stage Details */}
-            <Card className="h-[280px] overflow-hidden">
-              <CardHeader className="pb-2 px-4">
+            <Card className="chart-card">
+              <CardHeader className="pb-2 px-4 chart-card-header">
                 <CardTitle className="text-base font-medium">Stage Details</CardTitle>
                 <p className="text-xs text-muted-foreground">Detailed breakdown of the ticket funnel</p>
               </CardHeader>
-              <CardContent className="overflow-y-auto h-[215px] px-4 pb-3">
+              <CardContent className="chart-card-content overflow-y-auto">
               <ul className="space-y-3">
                 {data.ticketLifecycleFunnel.map((stage, index) => {
                   // For status-based funnel, show conversion rates instead of traditional drop-offs
@@ -438,12 +442,12 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
           </Card>
 
             {/* Priority Distribution with Insights */}
-            <Card className="h-[220px] overflow-hidden">
-              <CardHeader className="pb-2 px-4">
+            <Card className="chart-card">
+              <CardHeader className="pb-2 px-4 chart-card-header">
                 <CardTitle className="text-base font-medium">Priority Breakdown</CardTitle>
                 <p className="text-xs text-muted-foreground">Ticket urgency distribution</p>
               </CardHeader>
-              <CardContent className="px-4 pb-3">
+              <CardContent className="chart-card-content">
               <ChartContainer
                 key={`priority-${colorRefreshKey}`}
                 config={{
@@ -464,7 +468,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                     color: "hsl(0, 84.2%, 60.2%)",
                   },
                 }}
-                className="h-[140px] w-full"
+                className="chart-container"
               >
                 <BarChart data={safePriorityData}>
                   <CartesianGrid vertical={false} />
@@ -474,6 +478,10 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                     tickMargin={10}
                     axisLine={false}
                     fontSize={12}
+                    angle={-45}
+                    textAnchor="end"
+                    height={60}
+                    interval={0}
                   />
                   <YAxis
                     tickLine={false}
@@ -520,12 +528,12 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
           </Card>
 
             {/* Trend Chart with Insights */}
-            <Card className="h-[220px] overflow-hidden">
-              <CardHeader className="pb-2 px-4">
+            <Card className="chart-card">
+              <CardHeader className="pb-2 px-4 chart-card-header">
                 <CardTitle className="text-base font-medium">{trendInfo.title}</CardTitle>
                 <p className="text-xs text-muted-foreground">{trendInfo.description}</p>
               </CardHeader>
-              <CardContent className="px-4 pb-3">
+              <CardContent className="chart-card-content">
               <ChartContainer
                 key={`trend-${colorRefreshKey}`}
                 config={{
@@ -534,7 +542,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                     color: "hsl(var(--primary))",
                   },
                 }}
-                className="h-[120px] w-full"
+                className="chart-container"
               >
                 <AreaChart data={data.ticketsTrend}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -544,6 +552,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                     axisLine={false}
                     tickMargin={8}
                     fontSize={12}
+                    interval={0}
                   />
                   <YAxis
                     tickLine={false}
@@ -594,7 +603,6 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
           </Card>
           </div>
         </div>
-      </div>
     </div>
   );
 } 

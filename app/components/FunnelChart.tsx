@@ -36,7 +36,7 @@ export function FunnelChart({ data }: FunnelChartProps) {
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <RechartsFC width={730} height={250}>
+      <RechartsFC>
         <Tooltip
           contentStyle={{
             backgroundColor: 'hsl(var(--background))',
@@ -54,11 +54,12 @@ export function FunnelChart({ data }: FunnelChartProps) {
           stroke="rgba(255,255,255,0.5)"
         >
           <LabelList
-            position="right"
+            position="center"
             formatter={(val: string) => `${val}`}
             fill="hsl(var(--foreground))"
             stroke="none"
             dataKey="name"
+            fontSize={14}
           />
         </Funnel>
       </RechartsFC>
