@@ -54,6 +54,7 @@ export interface Agent {
   department_ids?: number[];
   group_ids?: number[];
   role_ids?: number[];
+  license_type?: string;
   created_at: string;
   updated_at: string;
   stats?: {

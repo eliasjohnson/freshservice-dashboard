@@ -2189,15 +2189,43 @@ export async function fetchDashboardData(filters: DashboardFilters = { timeRange
     } else {
       console.log('🔄 Fetching fresh agent data...');
       try {
-        const agentsResponse = await freshserviceApi.getAgents(1, 100);
-        agents = agentsResponse.agents || [];
+        // Fetch all pages of agents to ensure we get everyone
+        let allAgents: Agent[] = [];
+        let agentPage = 1;
+        let hasMoreAgents = true;
         
-        // Cache agents for 30 minutes (they change infrequently)
+        while (hasMoreAgents && agentPage <= 5) { // Up to 5 pages (500 agents)
+          const agentsResponse = await freshserviceApi.getAgents(agentPage, 100);
+          const pageAgents = agentsResponse.agents || [];
+          allAgents = [...allAgents, ...pageAgents];
+          
+          console.log(`📄 Agent page ${agentPage}: ${pageAgents.length} agents (total: ${allAgents.length})`);
+          
+          hasMoreAgents = pageAgents.length === 100;
+          agentPage++;
+        }
+        
+        // Filter to only IT agents (same logic as fetchAgentList)
+        agents = allAgents.filter(agent => {
+          const agentName = `${agent.first_name || ''} ${agent.last_name || ''}`.trim().toLowerCase();
+          const licenseType = agent.license_type;
+          
+          // Only include IT agents
+          const isItAgent = licenseType === 'it';
+          
+          // Exclude specific agents (Mike Hincks)
+          const isExcluded = agentName.includes('mike') || agentName.includes('hincks');
+          
+          return isItAgent && !isExcluded;
+        });
+        
+        console.log(`✅ Retrieved ${allAgents.length} total agents, filtered to ${agents.length} IT agents`);
+        
+        // Cache the filtered agents for 30 minutes (they change infrequently)
         if (agents.length > 0) {
           apiCache.set('all_agents', agents, 30 * 60 * 1000);
-          console.log(`💾 Cached ${agents.length} agents for 30 minutes`);
+          console.log(`💾 Cached ${agents.length} filtered IT agents for 30 minutes`);
         }
-        console.log(`✅ Retrieved ${agents.length} agents`);
       } catch (agentsError: any) {
         console.warn('⚠️ Failed to fetch agents:', agentsError);
         console.log('📊 Continuing without agent data...');
@@ -2527,7 +2555,7 @@ export async function fetchAgentList(): Promise<{ success: boolean; agents?: Arr
     const maxPages = 10; // Increased to 10 pages (1000 agents) to ensure we get everyone
     
     console.log('👥 === ENHANCED AGENT SEARCH ===');
-    console.log('🔍 Searching for ALL agents including Tanmoy Biswas...');
+    console.log('🔍 Searching for ALL agents...');
     
     while (hasMore && page <= maxPages) {
       try {
@@ -2545,21 +2573,6 @@ export async function fetchAgentList(): Promise<{ success: boolean; agents?: Arr
         // Check if this page had fewer agents than requested (indicates last page)
         hasMore = pageAgents.length === 100;
         
-        // Also check for specific agent we're looking for
-        const tanmoyFound = pageAgents.find(agent => {
-          const fullName = `${agent.first_name || ''} ${agent.last_name || ''}`.trim().toLowerCase();
-          return fullName.includes('tanmoy') || fullName.includes('biswas');
-        });
-        
-        if (tanmoyFound) {
-          console.log(`🎉 FOUND TANMOY BISWAS on page ${page}:`, {
-            id: tanmoyFound.id,
-            name: tanmoyFound.name || `${tanmoyFound.first_name} ${tanmoyFound.last_name}`,
-            active: tanmoyFound.active,
-            job_title: tanmoyFound.job_title,
-            department: tanmoyFound.department
-          });
-        }
         
         page++;
         
@@ -2576,48 +2589,75 @@ export async function fetchAgentList(): Promise<{ success: boolean; agents?: Arr
     
     console.log(`📊 Retrieved ${allAgents.length} total agents from ${page - 1} pages`);
     
-    // Search for Tanmoy one more time in the complete list
-    const tanmoyInList = allAgents.find(agent => {
-      const fullName = `${agent.first_name || ''} ${agent.last_name || ''}`.trim().toLowerCase();
-      const displayName = (agent.name || '').toLowerCase();
-      return fullName.includes('tanmoy') || fullName.includes('biswas') || 
-             displayName.includes('tanmoy') || displayName.includes('biswas');
-    });
-    
-    if (tanmoyInList) {
-      console.log(`✅ CONFIRMED: Tanmoy Biswas found in complete agent list:`, {
-        id: tanmoyInList.id,
-        name: tanmoyInList.name || `${tanmoyInList.first_name} ${tanmoyInList.last_name}`,
-        active: tanmoyInList.active
-      });
-    } else {
-      console.log(`❌ WARNING: Tanmoy Biswas not found in ${allAgents.length} agents`);
-      console.log('📝 First 5 agents for debugging:', allAgents.slice(0, 5).map(a => ({
-        id: a.id,
-        name: a.name || `${a.first_name} ${a.last_name}`,
-        active: a.active
-      })));
-    }
     
     // Debug: Log all unique departments to see what's available
     const allDepartments = [...new Set(allAgents.map(agent => agent.department).filter(Boolean))];
     console.log(`🔍 All unique departments found for dropdown: ${allDepartments.join(', ')}`);
     
-    // Filter agents by specific department for dropdown
+    // Debug: Log all unique department IDs to see what's available
+    const allDepartmentIds = [...new Set(allAgents.flatMap(agent => agent.department_ids || []))];
+    console.log(`🔍 All unique department IDs found: ${allDepartmentIds.join(', ')}`);
+    
+    // Debug: Show agents with multiple departments (like Sandra and Shrikant)
+    const multiDeptAgents = allAgents.filter(agent => (agent.department_ids?.length || 0) > 1);
+    console.log(`🔍 Agents with multiple departments (${multiDeptAgents.length} total):`);
+    multiDeptAgents.slice(0, 10).forEach(agent => {
+      console.log(`   - ${agent.first_name} ${agent.last_name}: departments ${JSON.stringify(agent.department_ids)}, primary: "${agent.department}"`);
+    });
+    
+    // Debug: Show sample agent object structure to understand available fields
+    if (allAgents.length > 0) {
+      console.log(`🔍 Sample agent object structure:`, Object.keys(allAgents[0]));
+      const sampleAgent = allAgents.find(a => a.first_name?.toLowerCase().includes('sandra') || a.first_name?.toLowerCase().includes('shrikant')) || allAgents[0];
+      console.log(`🔍 Sample agent data:`, {
+        id: sampleAgent.id,
+        name: sampleAgent.name || `${sampleAgent.first_name} ${sampleAgent.last_name}`,
+        role: sampleAgent.role,
+        role_ids: sampleAgent.role_ids,
+        job_title: sampleAgent.job_title,
+        license_type: sampleAgent.license_type,
+        department: sampleAgent.department,
+        department_ids: sampleAgent.department_ids,
+        active: sampleAgent.active,
+        occasional: sampleAgent.occasional
+      });
+    }
+    
+    // Filter agents by license_type = "it_agent" (matches Freshservice UI filter)
     const itAgents = allAgents.filter(agent => {
-      // Check department field and department_ids for specific department
-      const department = agent.department?.toLowerCase() || '';
+      const agentName = `${agent.first_name || ''} ${agent.last_name || ''}`.trim().toLowerCase();
+      const licenseType = agent.license_type;
       
-      const hasTargetDepartment = 
-        agent.department_ids?.includes(11000324230) ||
-        department === 'freshservice-dashboard' ||
-        department.includes('freshservice-dashboard');
+      // Use license_type filtering to match the Freshservice URL filter you're using
+      const isItAgent = licenseType === 'it';
       
-      if (hasTargetDepartment) {
-        console.log(`   ✅ IT Agent for dropdown: ${agent.first_name} ${agent.last_name} (dept:"${agent.department}")`);
+      // Exclude specific agents
+      const isExcluded = agentName.includes('mike') || agentName.includes('hincks');
+      
+      // Special logging for Sandra and Shrikant
+      if (agentName.includes('sandra') || agentName.includes('shrikant') || agentName.includes('mills') || agentName.includes('kamble')) {
+        console.log(`🔍 DEBUGGING ${agentName.toUpperCase()}:`);
+        console.log(`   - Agent ID: ${agent.id}`);
+        console.log(`   - Active: ${agent.active}`);
+        console.log(`   - Department: "${agent.department}"`);
+        console.log(`   - Department IDs: ${JSON.stringify(agent.department_ids)}`);
+        console.log(`   - Role: "${agent.role}"`);
+        console.log(`   - Role IDs: ${JSON.stringify(agent.role_ids)}`);
+        console.log(`   - Job Title: "${agent.job_title}"`);
+        console.log(`   - License Type: "${licenseType}"`);
+        console.log(`   - Email: ${agent.email}`);
+        console.log(`   - Is IT Agent (license_type = it): ${isItAgent}`);
+        console.log(`   - Raw Agent Object Keys: ${Object.keys(agent).join(', ')}`);
       }
       
-      return hasTargetDepartment;
+      if (isItAgent) {
+        console.log(`   ✅ IT Agent (license_type): ${agent.first_name} ${agent.last_name} (license: "${licenseType}") - Active: ${agent.active}`);
+      } else if (licenseType) {
+        // Log non-IT license types to understand what we're filtering out
+        console.log(`   ❌ Non-IT Agent: ${agent.first_name} ${agent.last_name} (license: "${licenseType}") - Active: ${agent.active}`);
+      }
+      
+      return isItAgent && !isExcluded;
     });
     
     const agentList = itAgents.map(agent => ({
@@ -2726,27 +2766,6 @@ export async function debugFindAgent(searchName: string): Promise<{ success: boo
         }))
       );
       
-      // Look for similar names
-      console.log(`🔍 Looking for similar names containing "tanmoy" or "biswas":`);
-      const similarAgents = allAgents.filter(agent => {
-        const fullName = `${agent.first_name || ''} ${agent.last_name || ''}`.trim().toLowerCase();
-        const displayName = (agent.name || '').toLowerCase();
-        return fullName.includes('tanmoy') || fullName.includes('biswas') || 
-               displayName.includes('tanmoy') || displayName.includes('biswas');
-      });
-      
-      if (similarAgents.length > 0) {
-        console.log(`🎯 Found ${similarAgents.length} agents with similar names:`, 
-          similarAgents.map(a => ({
-            id: a.id,
-            name: a.name || `${a.first_name || ''} ${a.last_name || ''}`.trim(),
-            active: a.active,
-            job_title: a.job_title
-          }))
-        );
-      } else {
-        console.log(`❌ No agents found with "tanmoy" or "biswas" in their names`);
-      }
     } else {
       // Show details for each matching agent
       for (const agent of matchingAgents) {
@@ -2844,9 +2863,9 @@ export async function debugFindAgent(searchName: string): Promise<{ success: boo
           console.log(`   - Sample responder IDs in system: [${uniqueResponders.slice(0, 10).join(', ')}]`);
           console.log(`   - Agent ID to match: ${agent.id}`);
           
-          // Special debugging for Sandra, Shrikant, and Tanmoy
+          // Special debugging for Sandra and Shrikant
           const agentName = (agent.name || `${agent.first_name} ${agent.last_name}`).toLowerCase();
-          if (agentName.includes('sandra') || agentName.includes('shrikant') || agentName.includes('tanmoy')) {
+          if (agentName.includes('sandra') || agentName.includes('shrikant')) {
             console.log(`🔍 SPECIAL DEBUG for ${agentName.toUpperCase()}:`);
             
             // Check if agent appears anywhere in ticket data

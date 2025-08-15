@@ -456,7 +456,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
     <div className="min-h-screen bg-background">
       {/* Compact Header for TV - shadcn style */}
       <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-6 py-4">
+        <div className="max-w-screen-2xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-6">
               <div>
@@ -654,7 +654,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
       </div>
 
       {/* Main Content - Optimized for TV */}
-      <div className={`container mx-auto px-6 py-6 transition-opacity duration-300 ${isRefreshing ? 'opacity-75' : 'opacity-100'}`}>
+      <div className={`max-w-screen-2xl mx-auto px-6 py-6 transition-opacity duration-300 ${isRefreshing ? 'opacity-75' : 'opacity-100'}`}>
         {/* Stats Cards - More Compact for TV */}
         <div className="grid gap-3 md:grid-cols-4 lg:grid-cols-6 mb-6">
           <Card>
@@ -727,7 +727,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
         </div>
 
         {/* Charts Grid - Optimized Layout for TV */}
-        <div className="grid gap-4 lg:grid-cols-3 mb-6">
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-3 mb-6">
           {/* Active Tickets by Status - Only show tickets needing attention */}
           <Card>
             <CardHeader className="pb-3">
@@ -849,7 +849,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
         </div>
 
         {/* Bottom Row - Line Charts */}
-        <div className="grid gap-4 lg:grid-cols-2 mb-6">
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 mb-6">
           {/* Trend Chart - Dynamic Title */}
           <Card>
             <CardHeader className="pb-3">
@@ -921,7 +921,7 @@ export default function Dashboard({ initialData, error }: DashboardProps) {
         </div>
 
         {/* New Analytics Section */}
-        <div className="grid gap-4 lg:grid-cols-3 mb-6">
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-3 mb-6">
           {/* Recurring Issues Analysis */}
           <Card>
             <CardHeader className="pb-3">

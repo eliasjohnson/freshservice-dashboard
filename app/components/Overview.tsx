@@ -148,165 +148,160 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
     }
   }
 
-  const trendInfo = getTrendChartInfo(timeRange)
+  const trendInfo = getTrendChartInfo(timeRange);
 
   return (
-    <div className="space-y-3">
-      {/* Main KPI Cards - 4 key metrics */}
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="dark:bg-slate-950/50 border-slate-800">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-normal">Active Tickets</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground opacity-50" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold">{formatNumber(data.stats.openTickets)}</div>
-            <p className="text-xs text-muted-foreground">
-              {timeRange === 'today' ? 'Active today' : 
-               timeRange === 'week' ? 'From this week' : 
-               timeRange === 'month' ? 'From this month' : 
-               timeRange === 'quarter' ? 'From this quarter' :
-               timeRange === 'q1' ? 'From Q1 (Jan-Mar)' :
-               timeRange === 'q2' ? 'From Q2 (Apr-Jun)' :
-               timeRange === 'q3' ? 'From Q3 (Jul-Sep)' :
-               timeRange === 'q4' ? 'From Q4 (Oct-Dec)' :
-               'From selected period'}
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card className="dark:bg-slate-950/50 border-slate-800">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-normal">Resolution Rate</CardTitle>
-            <Target className="h-4 w-4 text-muted-foreground opacity-50" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold text-green-500">{resolutionRate}%</div>
-            <p className="text-xs text-muted-foreground">
-              {timeRange === 'today' ? 'Resolved today' : 
-               timeRange === 'week' ? 'This week\'s rate' : 
-               timeRange === 'month' ? 'This month\'s rate' : 
-               timeRange === 'quarter' ? 'This quarter\'s rate' :
-               timeRange === 'q1' ? 'Q1 resolution rate' :
-               timeRange === 'q2' ? 'Q2 resolution rate' :
-               timeRange === 'q3' ? 'Q3 resolution rate' :
-               timeRange === 'q4' ? 'Q4 resolution rate' :
-               'Selected period rate'}
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card className="dark:bg-slate-950/50 border-slate-800">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-normal">Avg Response Time</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground opacity-50" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold">{data.stats.avgResponseTime}</div>
-            <p className="text-xs text-muted-foreground">
-              {timeRange === 'today' ? 'Today\'s average' : 
-               timeRange === 'week' ? 'This week\'s average' : 
-               timeRange === 'month' ? 'This month\'s average' : 
-               timeRange === 'quarter' ? 'This quarter\'s average' :
-               timeRange === 'q1' ? 'Q1 average' :
-               timeRange === 'q2' ? 'Q2 average' :
-               timeRange === 'q3' ? 'Q3 average' :
-               timeRange === 'q4' ? 'Q4 average' :
-               'Selected period average'}
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card className="dark:bg-slate-950/50 border-slate-800">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-normal">SLA Performance</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground opacity-50" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold">
-              {data.stats.slaBreaches > 0 ? (
-                <span className="text-red-500">{data.stats.slaBreaches} breaches</span>
-              ) : (
-                <span className="text-green-500">On track</span>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {timeRange === 'today' ? 'Today\'s SLA status' : 
-               timeRange === 'week' ? 'This week\'s SLA' : 
-               timeRange === 'month' ? 'This month\'s SLA' : 
-               timeRange === 'quarter' ? 'This quarter\'s SLA' :
-               timeRange === 'q1' ? 'Q1 SLA status' :
-               timeRange === 'q2' ? 'Q2 SLA status' :
-               timeRange === 'q3' ? 'Q3 SLA status' :
-               timeRange === 'q4' ? 'Q4 SLA status' :
-               'Selected period SLA'}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Main Charts Layout - Symmetric Grid */}
-      <div className="grid gap-3 lg:grid-cols-2">
-        {/* Left Column - Ticket Lifecycle Funnel and Additional Metrics */}
-        <div className="space-y-3">
-          {/* Ticket Lifecycle Funnel */}
-          <Card className="dark:bg-slate-950/50 border-slate-800 h-[320px]">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-medium">Ticket Lifecycle Funnel</CardTitle>
-              <p className="text-xs text-muted-foreground">Track tickets through each stage of resolution</p>
+    <div className="flex flex-col h-[calc(100vh-120px)] overflow-y-auto pb-16 overview-container">
+      <div className="space-y-3">
+        {/* KPI row: uniform heights, improved typographic scale */}
+        <div className="kpi-grid">
+          <Card className="h-[120px] overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-4">
+              <CardTitle className="text-sm font-medium text-muted-foreground truncate">Active Tickets</CardTitle>
+              <Activity className="h-4 w-4 text-muted-foreground/70 flex-shrink-0" />
             </CardHeader>
-            <CardContent className="pt-2 pb-2 px-4 h-[260px]">
-              <FunnelChart 
-                data={data.ticketLifecycleFunnel} 
-              />
+            <CardContent className="px-4">
+              <div className="text-2xl font-semibold">{formatNumber(data.stats.openTickets)}</div>
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                {timeRange === 'today' ? 'Active today' : 
+                 timeRange === 'week' ? 'From this week' : 
+                 timeRange === 'month' ? 'From this month' : 
+                 timeRange === 'quarter' ? 'This quarter' :
+                 timeRange === 'q1' ? 'Q1 (Jan-Mar)' :
+                 timeRange === 'q2' ? 'Q2 (Apr-Jun)' :
+                 timeRange === 'q3' ? 'Q3 (Jul-Sep)' :
+                 timeRange === 'q4' ? 'Q4 (Oct-Dec)' :
+                 'Selected period'}
+              </p>
             </CardContent>
           </Card>
-          
-          {/* Additional Metrics - Compact version */}
-          <Card className="dark:bg-slate-950/50 border-slate-800 h-[140px]">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-medium">Additional Metrics</CardTitle>
-              <p className="text-xs text-muted-foreground">Complete performance breakdown</p>
+          <Card className="h-[120px] overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-4">
+              <CardTitle className="text-sm font-medium text-muted-foreground truncate">Resolution Rate</CardTitle>
+              <Target className="h-4 w-4 text-muted-foreground/70 flex-shrink-0" />
             </CardHeader>
-            <CardContent className="pt-2 pb-2 px-4">
-              <div className="grid gap-4 grid-cols-4">
+            <CardContent className="px-4">
+              <div className="text-2xl font-semibold text-green-500">{resolutionRate}%</div>
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                {timeRange === 'today' ? 'Resolved today' : 
+                 timeRange === 'week' ? 'This week\'s rate' : 
+                 timeRange === 'month' ? 'This month\'s rate' : 
+                 timeRange === 'quarter' ? 'Quarter rate' :
+                 timeRange === 'q1' ? 'Q1 rate' :
+                 timeRange === 'q2' ? 'Q2 rate' :
+                 timeRange === 'q3' ? 'Q3 rate' :
+                 timeRange === 'q4' ? 'Q4 rate' :
+                 'Period rate'}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="h-[120px] overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-4">
+              <CardTitle className="text-sm font-medium text-muted-foreground truncate">Avg Response Time</CardTitle>
+              <Clock className="h-4 w-4 text-muted-foreground/70 flex-shrink-0" />
+            </CardHeader>
+            <CardContent className="px-4">
+              <div className="text-2xl font-semibold">{data.stats.avgResponseTime}</div>
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                {timeRange === 'today' ? 'Today\'s average' : 
+                 timeRange === 'week' ? 'This week\'s avg' : 
+                 timeRange === 'month' ? 'This month\'s avg' : 
+                 timeRange === 'quarter' ? 'Quarter avg' :
+                 timeRange === 'q1' ? 'Q1 average' :
+                 timeRange === 'q2' ? 'Q2 average' :
+                 timeRange === 'q3' ? 'Q3 average' :
+                 timeRange === 'q4' ? 'Q4 average' :
+                 'Period average'}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="h-[120px] overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-4">
+              <CardTitle className="text-sm font-medium text-muted-foreground truncate">SLA Performance</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground/70 flex-shrink-0" />
+            </CardHeader>
+            <CardContent className="px-4">
+              <div className="text-2xl font-semibold">
+                {data.stats.slaBreaches > 0 ? (
+                  <span className="text-red-500">{data.stats.slaBreaches} breaches</span>
+                ) : (
+                  <span className="text-green-500">On track</span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                {timeRange === 'today' ? 'Today\'s SLA' : 
+                 timeRange === 'week' ? 'This week\'s SLA' : 
+                 timeRange === 'month' ? 'This month\'s SLA' : 
+                 timeRange === 'quarter' ? 'Quarter SLA' :
+                 timeRange === 'q1' ? 'Q1 SLA' :
+                 timeRange === 'q2' ? 'Q2 SLA' :
+                 timeRange === 'q3' ? 'Q3 SLA' :
+                 timeRange === 'q4' ? 'Q4 SLA' :
+                 'Period SLA'}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Main Charts Layout - Symmetric Grid with Fixed Heights */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* Left Column - Balanced Heights */}
+          <div className="flex flex-col gap-4">
+            {/* Ticket Lifecycle Funnel */}
+            <Card className="h-[280px]">
+              <CardHeader className="pb-2 px-4">
+                <CardTitle className="text-base font-medium">Ticket Lifecycle Funnel</CardTitle>
+                <p className="text-xs text-muted-foreground">Track tickets through each stage of resolution</p>
+              </CardHeader>
+              <CardContent className="px-4 h-[215px]">
+                <FunnelChart 
+                  data={data.ticketLifecycleFunnel} 
+                />
+              </CardContent>
+            </Card>
+          
+            {/* Additional Metrics */}
+            <Card className="h-[160px] overflow-hidden">
+              <CardHeader className="pb-2 px-4">
+                <CardTitle className="text-base font-medium">Additional Metrics</CardTitle>
+                <p className="text-xs text-muted-foreground">Complete performance breakdown</p>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
                 <div className="space-y-1">
-                  <div className="flex items-center">
-                    <CheckCircle className="mr-1.5 h-3.5 w-3.5 text-green-500" />
-                    <span className="text-xs">
+                  <div className="flex items-start">
+                    <CheckCircle className="mr-1 h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
+                    <span className="text-xs leading-tight line-clamp-2">
                       {timeRange === 'today' ? 'Today\'s' : 
-                       timeRange === 'week' ? 'Last 7 Days\'' : 
-                       timeRange === 'month' ? 'Last 4 Weeks\'' : 
-                       timeRange === 'quarter' ? 'This Quarter\'s' :
-                       timeRange === 'q1' ? 'Q1' :
-                       timeRange === 'q2' ? 'Q2' :
-                       timeRange === 'q3' ? 'Q3' :
-                       timeRange === 'q4' ? 'Q4' : 'Selected Period\'s'} Resolutions
+                       timeRange === 'week' ? 'Week' : 
+                       timeRange === 'month' ? 'Month' : 
+                       timeRange === 'quarter' ? 'Quarter' :
+                       timeRange.startsWith('q') ? timeRange.toUpperCase() : 'Period'} Resolutions
                     </span>
                   </div>
                   <div className="text-xl font-semibold text-green-500">{formatNumber(data.stats.resolvedToday)}</div>
                 </div>
                 
                 <div className="space-y-1">
-                  <div className="flex items-center">
-                    <Award className="mr-1.5 h-3.5 w-3.5 text-green-500" />
-                    <span className="text-xs">Resolution Rate</span>
+                  <div className="flex items-start">
+                    <Award className="mr-1 h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
+                    <span className="text-xs leading-tight">Resolution Rate</span>
                   </div>
                   <div className="text-xl font-semibold text-green-500">{data.stats.resolutionRate}%</div>
                 </div>
                 
                 <div className="space-y-1">
-                  <div className="flex items-center">
-                    <Timer className="mr-1.5 h-3.5 w-3.5 text-blue-500" />
-                    <span className="text-xs">Avg Resolution Time</span>
+                  <div className="flex items-start">
+                    <Timer className="mr-1 h-3 w-3 text-blue-500 mt-0.5 flex-shrink-0" />
+                    <span className="text-xs leading-tight">Avg Resolution</span>
                   </div>
                   <div className="text-xl font-semibold text-blue-500">{data.stats.avgResolutionTime}</div>
                 </div>
                 
                 <div className="space-y-1">
-                  <div className="flex items-center">
-                    <Zap className="mr-1.5 h-3.5 w-3.5 text-purple-500" />
-                    <span className="text-xs">First Call Resolution</span>
+                  <div className="flex items-start">
+                    <Zap className="mr-1 h-3 w-3 text-purple-500 mt-0.5 flex-shrink-0" />
+                    <span className="text-xs leading-tight line-clamp-2">First Call Resolution</span>
                   </div>
                   <div className="text-xl font-semibold text-purple-500">{data.stats.firstCallResolution}%</div>
                 </div>
@@ -314,13 +309,13 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
             </CardContent>
           </Card>
           
-          {/* Tickets by Status with Insights */}
-          <Card className="dark:bg-slate-950/50 border-slate-800">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-medium">Tickets by Status</CardTitle>
-              <p className="text-xs text-muted-foreground">Current status distribution for {timeRange === 'today' ? 'today' : timeRange === 'week' ? 'the last 7 days' : timeRange === 'month' ? 'the last 4 weeks' : timeRange === 'quarter' ? 'this quarter' : timeRange === 'q1' ? 'Q1 (Jan-Mar)' : timeRange === 'q2' ? 'Q2 (Apr-Jun)' : timeRange === 'q3' ? 'Q3 (Jul-Sep)' : timeRange === 'q4' ? 'Q4 (Oct-Dec)' : 'selected period'}</p>
-            </CardHeader>
-            <CardContent className="pt-2 pb-2 px-4">
+            {/* Tickets by Status with Insights */}
+            <Card className="h-[260px]">
+              <CardHeader className="pb-2 px-4">
+                <CardTitle className="text-base font-medium">Tickets by Status</CardTitle>
+                <p className="text-xs text-muted-foreground">Current status distribution</p>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
               <ChartContainer
                 key={`status-bar-${colorRefreshKey}`}
                 config={{
@@ -341,7 +336,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                     color: "hsl(262.1, 83.3%, 57.8%)",
                   },
                 }}
-                className="h-[200px] w-full"
+                className="h-[170px] w-full"
               >
                 <BarChart data={safeStatusData}>
                   <CartesianGrid vertical={false} />
@@ -367,8 +362,8 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                 </BarChart>
               </ChartContainer>
               
-              {/* Chart Insights */}
-              <div className="mt-3 flex items-center gap-2 text-sm">
+              {/* Chart Insights - moved inside card bounds */}
+              <div className="mt-2 flex items-center gap-2 text-xs">
                 <div className="flex gap-2 font-medium leading-none">
                   {(() => {
                     const total = safeStatusData.reduce((sum, item) => sum + item.value, 0);
@@ -379,21 +374,21 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                     return `${percent}% of tickets are ${mostCommon.name.toLowerCase()}`;
                   })()}
                 </div>
-                <Activity className="h-4 w-4" />
+                <Activity className="h-3 w-3" />
               </div>
             </CardContent>
           </Card>
-        </div>
+          </div>
 
-        {/* Right Column - Funnel Details, Priority, and Trend */}
-        <div className="space-y-3">
-          {/* Funnel Stage Details */}
-          <Card className="dark:bg-slate-950/50 border-slate-800 h-[320px]">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-medium">Stage Details</CardTitle>
-              <p className="text-xs text-muted-foreground">Detailed breakdown of the ticket funnel</p>
-            </CardHeader>
-            <CardContent className="overflow-y-auto h-[260px] px-4 pt-2 pb-2">
+          {/* Right Column - Matching Heights */}
+          <div className="flex flex-col gap-4">
+            {/* Funnel Stage Details */}
+            <Card className="h-[280px] overflow-hidden">
+              <CardHeader className="pb-2 px-4">
+                <CardTitle className="text-base font-medium">Stage Details</CardTitle>
+                <p className="text-xs text-muted-foreground">Detailed breakdown of the ticket funnel</p>
+              </CardHeader>
+              <CardContent className="overflow-y-auto h-[215px] px-4 pb-3">
               <ul className="space-y-3">
                 {data.ticketLifecycleFunnel.map((stage, index) => {
                   // For status-based funnel, show conversion rates instead of traditional drop-offs
@@ -418,7 +413,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                   }
 
                   return (
-                    <li key={index} className="border-b border-slate-800 pb-2 last:border-b-0">
+                    <li key={index} className="subtle-divider pb-3 last:border-b-0">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center">
                           <span 
@@ -442,13 +437,13 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
             </CardContent>
           </Card>
 
-          {/* Priority Distribution with Insights */}
-          <Card className="dark:bg-slate-950/50 border-slate-800">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-medium">Priority Breakdown</CardTitle>
-              <p className="text-xs text-muted-foreground">Ticket urgency distribution</p>
-            </CardHeader>
-            <CardContent className="pt-2 pb-3 px-4">
+            {/* Priority Distribution with Insights */}
+            <Card className="h-[220px] overflow-hidden">
+              <CardHeader className="pb-2 px-4">
+                <CardTitle className="text-base font-medium">Priority Breakdown</CardTitle>
+                <p className="text-xs text-muted-foreground">Ticket urgency distribution</p>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
               <ChartContainer
                 key={`priority-${colorRefreshKey}`}
                 config={{
@@ -502,7 +497,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
               </ChartContainer>
               
               {/* Chart Insights */}
-              <div className="mt-3 flex items-center gap-2 text-sm">
+              <div className="mt-2 flex items-center gap-2 text-xs">
                 <div className="flex gap-2 font-medium leading-none">
                   {(() => {
                     const total = safePriorityData.reduce((sum, item) => sum + item.value, 0);
@@ -511,26 +506,26 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                     const criticalPercent = total > 0 ? Math.round(((urgent + high) / total) * 100) : 0;
                     
                     if (criticalPercent > 50) {
-                      return `${criticalPercent}% critical priority tickets`;
+                      return `${criticalPercent}% critical priority`;
                     } else if (criticalPercent > 25) {
-                      return `${criticalPercent}% high priority • manageable load`;
+                      return `${criticalPercent}% high priority • manageable`;
                     } else {
-                      return `${criticalPercent}% critical • healthy distribution`;
+                      return `${criticalPercent}% critical • healthy`;
                     }
                   })()}
                 </div>
-                <AlertTriangle className="h-4 w-4" />
+                <AlertTriangle className="h-3 w-3" />
               </div>
             </CardContent>
           </Card>
 
-          {/* Trend Chart with Insights */}
-          <Card className="dark:bg-slate-950/50 border-slate-800">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-medium">{trendInfo.title}</CardTitle>
-              <p className="text-xs text-muted-foreground">{trendInfo.description}</p>
-            </CardHeader>
-            <CardContent className="pt-2 pb-3 px-4">
+            {/* Trend Chart with Insights */}
+            <Card className="h-[220px] overflow-hidden">
+              <CardHeader className="pb-2 px-4">
+                <CardTitle className="text-base font-medium">{trendInfo.title}</CardTitle>
+                <p className="text-xs text-muted-foreground">{trendInfo.description}</p>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
               <ChartContainer
                 key={`trend-${colorRefreshKey}`}
                 config={{
@@ -539,7 +534,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                     color: "hsl(var(--primary))",
                   },
                 }}
-                className="h-[140px] w-full"
+                className="h-[120px] w-full"
               >
                 <AreaChart data={data.ticketsTrend}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -572,7 +567,7 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
               </ChartContainer>
               
               {/* Chart Insights */}
-              <div className="mt-3 flex items-center gap-2 text-sm">
+              <div className="mt-2 flex items-center gap-2 text-xs">
                 <div className="flex gap-2 font-medium leading-none">
                   {(() => {
                     const values = data.ticketsTrend.map(d => d.value);
@@ -583,26 +578,23 @@ export function Overview({ data, refreshKey = 0, timeRange = 'week' }: OverviewP
                     const peakPeriod = data.ticketsTrend[peakIndex]?.name;
                     
                     if (timeRange === 'today') {
-                      return `Peak activity: ${peakPeriod} (${peak} tickets)`;
+                      return `Peak: ${peakPeriod} (${peak} tickets)`;
                     } else if (timeRange === 'week') {
-                      return `${average} avg daily tickets • Peak: ${peakPeriod}`;
+                      return `${average} avg daily • Peak: ${peakPeriod}`;
                     } else if (timeRange === 'month') {
-                      return `${average} avg weekly tickets • Peak: ${peakPeriod}`;
+                      return `${average} avg weekly • Peak: ${peakPeriod}`;
                     } else {
-                      return `${average} avg monthly tickets • Peak: ${peakPeriod}`;
+                      return `${average} avg monthly • Peak: ${peakPeriod}`;
                     }
                   })()}
                 </div>
-                <TrendingUp className="h-4 w-4" />
+                <TrendingUp className="h-3 w-3" />
               </div>
             </CardContent>
           </Card>
+          </div>
         </div>
       </div>
-
-
-
-
     </div>
-  )
+  );
 } 

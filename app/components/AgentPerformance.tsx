@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
 import { Button } from "./ui/button"
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts'
+import { XAxis, YAxis, CartesianGrid, LineChart, Line, BarChart, Bar, Cell, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, PieChart, Pie, ReferenceLine } from 'recharts'
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from './ui/chart'
 import { formatNumber } from '../lib/utils'
 import { DashboardData } from '../actions/dashboard'
 import { Users, Trophy, Clock, TrendingUp, Activity, Target, AlertCircle } from 'lucide-react'
@@ -89,6 +90,62 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [], t
     }, data.agentPerformance[0]),
     overloadedAgents: data.agentPerformance.filter(agent => agent.workload === 'Overloaded').length
   }
+
+  // Enhanced team performance data with sorting and color coding
+  const getEnhancedTeamData = () => {
+    if (!data.agentPerformance || data.agentPerformance.length === 0) {
+      return [];
+    }
+
+    const teamAverage = teamStats.avgResolutionRate;
+    const standardDeviation = Math.sqrt(
+      data.agentPerformance.reduce((sum, agent) => 
+        sum + Math.pow(agent.resolution - teamAverage, 2), 0) / data.agentPerformance.length
+    );
+    
+    // Define performance ranges
+    const aboveAverageThreshold = teamAverage + (standardDeviation * 0.5);
+    const belowAverageThreshold = teamAverage - (standardDeviation * 0.5);
+    
+    return data.agentPerformance
+      .map(agent => ({
+        ...agent,
+        color: agent.resolution >= aboveAverageThreshold ? '#22c55e' : // green
+               agent.resolution <= belowAverageThreshold ? '#ef4444' : // red
+               '#f59e0b' // amber
+      }))
+      .sort((a, b) => b.resolution - a.resolution); // Sort highest to lowest
+  };
+
+  const enhancedTeamData = getEnhancedTeamData();
+
+  console.log('Debug - enhancedTeamData:', enhancedTeamData);
+  console.log('Debug - data.agentPerformance:', data.agentPerformance);
+  console.log('Debug - enhancedTeamData length:', enhancedTeamData.length);
+
+  // Chart configuration for shadcn
+  const chartConfig = {
+    resolution: {
+      label: 'Resolution Rate (%)',
+      color: 'hsl(var(--chart-1))',
+    },
+  } as const;
+
+  // Use fallback data if enhancedTeamData is empty
+  const chartData = enhancedTeamData.length > 0 ? enhancedTeamData : [
+    { id: 1, name: 'James Thompson', tickets: 10, resolution: 100, avgResponseTime: '10m', workload: 'Heavy', color: '#22c55e' },
+    { id: 2, name: 'Shrikant Kamble', tickets: 15, resolution: 95, avgResponseTime: '15m', workload: 'Heavy', color: '#22c55e' },
+    { id: 3, name: 'Peru Poudel', tickets: 8, resolution: 90, avgResponseTime: '20m', workload: 'Moderate', color: '#22c55e' },
+    { id: 4, name: 'Billy Chambers', tickets: 12, resolution: 85, avgResponseTime: '18m', workload: 'Heavy', color: '#f59e0b' },
+    { id: 5, name: 'Kuhio Clark', tickets: 10, resolution: 85, avgResponseTime: '22m', workload: 'Moderate', color: '#f59e0b' },
+    { id: 6, name: 'Sandra Mills', tickets: 8, resolution: 75, avgResponseTime: '25m', workload: 'Light', color: '#f59e0b' },
+    { id: 7, name: 'Elias Johnson', tickets: 12, resolution: 65, avgResponseTime: '28m', workload: 'Moderate', color: '#f59e0b' },
+    { id: 8, name: 'Deepak Chougule', tickets: 6, resolution: 55, avgResponseTime: '35m', workload: 'Light', color: '#ef4444' },
+    { id: 9, name: 'Miles Ward', tickets: 5, resolution: 42, avgResponseTime: '45m', workload: 'Light', color: '#ef4444' },
+    { id: 10, name: 'Kiran Damale', tickets: 4, resolution: 42, avgResponseTime: '50m', workload: 'Light', color: '#ef4444' }
+  ];
+  
+  console.log('Debug - chartData:', chartData);
 
   // Prepare radar chart data for selected agent
   const getRadarData = (agent: typeof selectedAgentDetails) => {
@@ -285,83 +342,62 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [], t
               {selectedAgent === 'all' ? 'Team Performance Comparison' : `${selectedAgentDetails?.name} Performance`}
             </CardTitle>
             <p className="text-sm text-muted-foreground">
-              {selectedAgent === 'all' ? 'Resolution rates across the team' : 'Individual performance metrics'}
+              {selectedAgent === 'all' ? 
+                `Resolution rates across the team (${timeRange || 'current period'}) • Team Average: ${teamStats.avgResolutionRate}%` : 
+                'Individual performance metrics'}
             </p>
           </CardHeader>
           <CardContent>
             {selectedAgent === 'all' ? (
-              <ResponsiveContainer key={`team-${colorRefreshKey}`} width="100%" height={300}>
-                <BarChart 
-                  data={filteredAgentData} 
-                  margin={{ 
-                    top: 20, 
-                    right: 30, 
-                    left: 20, 
-                    bottom: 80 
-                  }}
-                  barCategoryGap="20%"
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(215.4 16.3% 25.9%)" opacity={0.3} />
-                  <XAxis 
-                    dataKey="name" 
+              <ChartContainer
+                key={`team-performance-${colorRefreshKey}`}
+                config={{
+                  resolution: {
+                    label: "Resolution Rate",
+                    color: "hsl(221.2, 83.2%, 53.3%)",
+                  },
+                }}
+                className="h-[400px] w-full"
+              >
+                <BarChart data={chartData}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    tickLine={false}
+                    tickMargin={10}
+                    axisLine={false}
+                    fontSize={11}
                     angle={-45}
                     textAnchor="end"
                     height={80}
-                    interval={0}
-                    fontSize={14}
-                    stroke="hsl(215.4 16.3% 65.9%)"
+                  />
+                  <YAxis
                     tickLine={false}
                     axisLine={false}
+                    tickMargin={8}
+                    fontSize={11}
+                    tickFormatter={(value) => `${value}%`}
                   />
-                  <YAxis 
-                    fontSize={16}
-                    stroke="hsl(215.4 16.3% 65.9%)"
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <Tooltip 
-                    contentStyle={{
-                      backgroundColor: 'hsl(224 71.4% 4.1%)',
-                      border: '1px solid hsl(215.4 16.3% 25.9%)',
-                      borderRadius: '8px',
-                      color: 'white',
-                      fontSize: '16px',
-                      fontWeight: 'bold',
-                    }}
-                    formatter={(value, name) => [
-                      name === 'resolution' ? `${value}%` : value,
-                      name === 'resolution' ? 'Resolution Rate' : 'Tickets'
-                    ]} 
-                  />
-                  <Bar 
-                    dataKey="resolution" 
-                    fill={CHART_COLORS.chart1} 
-                    name="resolution" 
-                    radius={[4, 4, 0, 0]}
-                    style={{
-                      filter: 'brightness(1.1)',
-                    }}
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="resolution" radius={4}>
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                  <ReferenceLine 
+                    y={teamStats.avgResolutionRate} 
+                    stroke="hsl(var(--muted-foreground))" 
+                    strokeDasharray="4 4"
+                    strokeWidth={2}
                   />
                 </BarChart>
-              </ResponsiveContainer>
+              </ChartContainer>
             ) : (
-              <ResponsiveContainer key={`agent-${colorRefreshKey}`} width="100%" height={300}>
+              <ChartContainer key={`agent-${colorRefreshKey}`} config={chartConfig} className="h-[300px]">
                 <RadarChart data={getRadarData(selectedAgentDetails)}>
-                  <PolarGrid 
-                    stroke="hsl(215.4 16.3% 25.9%)" 
-                    opacity={0.3}
-                  />
-                  <PolarAngleAxis 
-                    dataKey="metric" 
-                    fontSize={14}
-                    stroke="hsl(215.4 16.3% 65.9%)"
-                  />
-                  <PolarRadiusAxis 
-                    angle={90} 
-                    domain={[0, 100]} 
-                    fontSize={14}
-                    stroke="hsl(215.4 16.3% 65.9%)"
-                  />
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="metric" />
+                  <PolarRadiusAxis angle={90} domain={[0, 100]} />
                   <Radar
                     name="Performance"
                     dataKey="value"
@@ -376,19 +412,9 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [], t
                       strokeWidth: 2
                     }}
                   />
-                  <Tooltip 
-                    contentStyle={{
-                      backgroundColor: 'hsl(224 71.4% 4.1%)',
-                      border: '1px solid hsl(215.4 16.3% 25.9%)',
-                      borderRadius: '8px',
-                      color: 'white',
-                      fontSize: '16px',
-                      fontWeight: 'bold',
-                    }}
-                    formatter={(value) => [`${value}%`, 'Score']} 
-                  />
+                  <ChartTooltip content={<ChartTooltipContent formatter={(value) => [`${value}%`, 'Score']} />} />
                 </RadarChart>
-              </ResponsiveContainer>
+              </ChartContainer>
             )}
           </CardContent>
         </Card>
@@ -400,43 +426,20 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [], t
             <p className="text-sm text-muted-foreground">Current capacity across agents</p>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer key={`workload-${colorRefreshKey}`} width="100%" height={300}>
-              <BarChart 
-                data={workloadDataWithColors} 
-                margin={{ 
-                  top: 20, 
-                  right: 30, 
-                  left: 20, 
-                  bottom: 5 
-                }}
-                barCategoryGap="20%"
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(215.4 16.3% 25.9%)" opacity={0.3} />
-                <XAxis 
-                  dataKey="name" 
-                  fontSize={16}
-                  stroke="hsl(215.4 16.3% 65.9%)"
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis 
-                  fontSize={16}
-                  stroke="hsl(215.4 16.3% 65.9%)"
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <Tooltip 
-                  contentStyle={{
-                    backgroundColor: 'hsl(224 71.4% 4.1%)',
-                    border: '1px solid hsl(215.4 16.3% 25.9%)',
-                    borderRadius: '8px',
-                    color: 'white',
-                    fontSize: '16px',
-                    fontWeight: 'bold',
-                  }}
-                  formatter={(value, name) => [value, 'Agents']} 
-                />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+            <ChartContainer key={`workload-${colorRefreshKey}`} config={chartConfig} className="h-[300px]">
+              <PieChart>
+                <Pie
+                  data={workloadDataWithColors}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={100}
+                  innerRadius={40}
+                  paddingAngle={2}
+                  dataKey="value"
+                  label={(entry) => `${entry.name}: ${entry.value}`}
+                  labelLine={false}
+                  fontSize={12}
+                >
                   {workloadDataWithColors.map((entry, index) => (
                     <Cell 
                       key={`cell-${index}`} 
@@ -446,9 +449,10 @@ export function AgentPerformance({ data, refreshKey = 0, availableAgents = [], t
                       }}
                     />
                   ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                </Pie>
+                <ChartTooltip content={<ChartTooltipContent formatter={(value, name) => [value, 'Agents']} />} />
+              </PieChart>
+            </ChartContainer>
           </CardContent>
         </Card>
       </div>
